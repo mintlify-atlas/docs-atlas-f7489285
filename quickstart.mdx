@@ -1,47 +1,272 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with ro-crate-py"
+sidebarTitle: "Quickstart"
+description: "Learn how to create, populate, and write an RO-Crate using ro-crate-py in under five minutes with a complete working code example."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+This guide walks you through the most common ro-crate-py operations: creating a new crate, adding data and contextual entities, expressing relationships between them, writing the crate to disk or a zip archive, and reading it back. Every snippet below is drawn directly from the library's source and is ready to run once you have [installed ro-crate-py](/installation).
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+## Scenario
 
-## Prerequisites
+Alice and Bob collaborated on a research project. Alice prepared a spreadsheet of experimental data and Bob produced a diagram from it; together they wrote a manuscript. We will package these artefacts — along with a directory of log files — into a single, richly described RO-Crate.
 
-Before you begin, you must have:
+First, create the placeholder files:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+```bash
+mkdir exp
+touch exp/paper.pdf
+touch exp/results.csv
+touch exp/diagram.svg
+mkdir exp/logs
+touch exp/logs/log1.txt
+touch exp/logs/log2.txt
+```
 
-## Get started
+## Complete Walkthrough
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Create a new ROCrate">
+    Import `ROCrate` and instantiate an empty crate. By default the crate conforms to RO-Crate **1.2**.
 
-    ```bash
-    npm install your-package
+    ```python
+    from rocrate.rocrate import ROCrate
+
+    crate = ROCrate()
+    print(crate.version)  # '1.2'
+    ```
+
+    <Tip>
+      To target an older specification, pass `version="1.1"` or `version="1.0"` to the constructor.
+    </Tip>
+  </Step>
+
+  <Step title="Add files with properties">
+    Use `add_file()` to register data files. Pass `properties` to attach metadata such as a human-readable name and a media type.
+
+    ```python
+    paper = crate.add_file("exp/paper.pdf", properties={
+        "name": "manuscript",
+        "encodingFormat": "application/pdf"
+    })
+
+    table = crate.add_file("exp/results.csv", properties={
+        "name": "experimental data",
+        "encodingFormat": "text/csv"
+    })
+
+    # dest_path controls where the file lands inside the crate directory
+    diagram = crate.add_file("exp/diagram.svg", dest_path="images/figure.svg", properties={
+        "name": "bar chart",
+        "encodingFormat": "image/svg+xml"
+    })
+    ```
+
+    <Note>
+      When `dest_path` is omitted, the file is placed at the crate root using the source file's basename (e.g. `paper.pdf`). When provided, the file is stored at that relative path inside the crate (e.g. `images/figure.svg`).
+    </Note>
+  </Step>
+
+  <Step title="Add a directory (Dataset)">
+    Entire directory trees can be added with `add_dataset()`. In the RO-Crate model a directory is a `Dataset` entity. All files inside are copied recursively when the crate is written, but only the top-level dataset entry appears in `ro-crate-metadata.json` unless you add files individually.
+
+    ```python
+    logs = crate.add_dataset("exp/logs")
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
+  <Step title="Add Person contextual entities">
+    Contextual entities represent real-world things that are not files. Use the `Person` class (backed by an ORCID URI here) to describe the authors.
+
+    ```python
+    from rocrate.model.person import Person
+
+    alice_id = "https://orcid.org/0000-0000-0000-0000"
+    bob_id   = "https://orcid.org/0000-0000-0000-0001"
+
+    alice = crate.add(Person(crate, alice_id, properties={
+        "name": "Alice Doe",
+        "affiliation": "University of Flatland"
+    }))
+
+    bob = crate.add(Person(crate, bob_id, properties={
+        "name": "Bob Doe",
+        "affiliation": "University of Flatland"
+    }))
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
+  <Step title="Link entities with properties">
+    Relationships are expressed by assigning entity objects (or lists of them) to properties. ro-crate-py serialises these as JSON-LD `{"@id": "..."}` references automatically.
+
+    ```python
+    paper["author"]   = [alice, bob]   # both authors on the manuscript
+    table["author"]   = alice          # Alice owns the data
+    diagram["author"] = bob            # Bob made the diagram
     ```
+
+    <Note>
+      Because `paper["author"]` generates a new list on access each time, calling `.append()` on it has no effect. To add a single item to an existing list property, use the `append_to` method instead:
+
+      ```python
+      donald = crate.add(Person(crate, "https://en.wikipedia.org/wiki/Donald_Duck", properties={
+          "name": "Donald Duck"
+      }))
+      paper.append_to("author", donald)
+      ```
+    </Note>
+  </Step>
+
+  <Step title="Write the crate to a directory">
+    Serialise everything to disk. The library writes copies of all source files and generates `ro-crate-metadata.json` at the crate root.
+
+    ```python
+    crate.write("exp_crate")
+    ```
+
+    The resulting layout on disk:
+
+    ```
+    exp_crate/
+    ├── images/
+    │   └── figure.svg
+    ├── logs/
+    │   ├── log1.txt
+    │   └── log2.txt
+    ├── paper.pdf
+    ├── results.csv
+    └── ro-crate-metadata.json
+    ```
+  </Step>
+
+  <Step title="Write the crate as a zip archive">
+    Some platforms and repositories accept RO-Crates as zip archives. Use `write_zip()`:
+
+    ```python
+    crate.write_zip("exp_crate.zip")
+    ```
+  </Step>
+
+  <Step title="Read an existing crate">
+    Load a previously written crate from a directory or zip file and iterate over its entities:
+
+    ```python
+    crate = ROCrate("exp_crate")   # also works: ROCrate("exp_crate.zip")
+
+    for e in crate.get_entities():
+        print(e.id, e.type)
+    ```
+
+    Expected output:
+
+    ```
+    ./                                        Dataset
+    ro-crate-metadata.json                    CreativeWork
+    paper.pdf                                 File
+    results.csv                               File
+    images/figure.svg                         File
+    https://orcid.org/0000-0000-0000-0000     Person
+    https://orcid.org/0000-0000-0000-0001     Person
+    ```
+
+    <Tip>
+      Use `crate.data_entities` to iterate only over files and datasets, and `crate.contextual_entities` for persons, organisations, and other non-digital entities. Fetch a single entity by its `@id` with `crate.dereference("paper.pdf")`.
+    </Tip>
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Resulting ro-crate-metadata.json
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+After `crate.write("exp_crate")`, the generated metadata file looks like this (abbreviated for clarity):
+
+```json
+{
+  "@context": "https://w3id.org/ro/crate/1.2/context",
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "conformsTo": {"@id": "https://w3id.org/ro/crate/1.2"},
+      "about": {"@id": "./"}
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "hasPart": [
+        {"@id": "paper.pdf"},
+        {"@id": "results.csv"},
+        {"@id": "images/figure.svg"},
+        {"@id": "logs/"}
+      ]
+    },
+    {
+      "@id": "paper.pdf",
+      "@type": "File",
+      "name": "manuscript",
+      "encodingFormat": "application/pdf",
+      "author": [
+        {"@id": "https://orcid.org/0000-0000-0000-0000"},
+        {"@id": "https://orcid.org/0000-0000-0000-0001"}
+      ]
+    },
+    {
+      "@id": "results.csv",
+      "@type": "File",
+      "name": "experimental data",
+      "encodingFormat": "text/csv",
+      "author": {"@id": "https://orcid.org/0000-0000-0000-0000"}
+    },
+    {
+      "@id": "images/figure.svg",
+      "@type": "File",
+      "name": "bar chart",
+      "encodingFormat": "image/svg+xml",
+      "author": {"@id": "https://orcid.org/0000-0000-0000-0001"}
+    },
+    {
+      "@id": "logs/",
+      "@type": "Dataset"
+    },
+    {
+      "@id": "https://orcid.org/0000-0000-0000-0000",
+      "@type": "Person",
+      "name": "Alice Doe",
+      "affiliation": "University of Flatland"
+    },
+    {
+      "@id": "https://orcid.org/0000-0000-0000-0001",
+      "@type": "Person",
+      "name": "Bob Doe",
+      "affiliation": "University of Flatland"
+    }
+  ]
+}
+```
+
+<Info>
+  The first two entries — the metadata descriptor (`ro-crate-metadata.json`) and the root dataset (`./`) — are managed automatically by ro-crate-py and are always present in every valid RO-Crate.
+</Info>
+
+## Inspecting Entity Properties
+
+Entity objects expose their underlying JSON representation via `.properties()`. This is useful for debugging or for building custom serialisation logic:
+
+```python
+import json
+
+crate = ROCrate("exp_crate")
+article = crate.dereference("paper.pdf")
+print(json.dumps(article.properties(), indent=2))
+```
+
+```json
+{
+  "@id": "paper.pdf",
+  "@type": "File",
+  "name": "manuscript",
+  "encodingFormat": "application/pdf",
+  "author": [
+    {"@id": "https://orcid.org/0000-0000-0000-0000"},
+    {"@id": "https://orcid.org/0000-0000-0000-0001"}
+  ]
+}
+```

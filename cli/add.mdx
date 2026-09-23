@@ -1,0 +1,350 @@
+---
+title: "rocrate add: Add Entities to an RO-Crate"
+sidebarTitle: "add"
+description: "rocrate add registers files, datasets, workflows, and test metadata entities in an existing RO-Crate's ro-crate-metadata.json file."
+---
+
+The `rocrate add` command group lets you register data and contextual entities in the `ro-crate-metadata.json` of an existing crate. Unlike `rocrate init`, which rebuilds the entire metadata file from a directory scan, each `add` subcommand makes a targeted, additive change — it loads the current metadata, adds the new entity, and writes the file back. The files or directories you register must already exist inside the crate directory; `rocrate add` records them in the metadata but does not copy or move them.
+
+## Subcommand overview
+
+```console
+$ rocrate add --help
+Usage: rocrate add [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  dataset
+  file
+  test-definition
+  test-instance
+  test-suite
+  workflow
+```
+
+---
+
+## `rocrate add file PATH`
+
+Registers an existing file inside the crate as a `File` entity in the metadata.
+
+```bash
+rocrate add file sample_file.txt
+rocrate add file sample_file.txt -P name=sample -P description="Sample file"
+```
+
+<ParamField body="PATH" type="path" required>
+  Path to the file to register. The file must exist and must be located inside the crate directory.
+</ParamField>
+
+<ParamField body="-c / --crate-dir PATH" type="path" default="current working directory">
+  Root directory of the crate. Defaults to the current working directory.
+</ParamField>
+
+<ParamField body="-P / --property KEY=VALUE" type="string">
+  Set an additional metadata property on the entity. Repeat the flag to set multiple properties.
+
+  ```bash
+  rocrate add file results.csv \
+    -P name="experimental data" \
+    -P encodingFormat="text/csv"
+  ```
+</ParamField>
+
+<Note>
+The file must already be present inside the crate directory tree. `rocrate add file` only updates the metadata; it does not copy or download files.
+</Note>
+
+---
+
+## `rocrate add dataset PATH`
+
+Registers an existing directory inside the crate as a `Dataset` entity.
+
+```bash
+rocrate add dataset test_add_dir
+rocrate add dataset logs/ -P name="Run logs"
+```
+
+<ParamField body="PATH" type="path" required>
+  Path to the directory to register. The directory must exist and must be located inside the crate directory.
+</ParamField>
+
+<ParamField body="-c / --crate-dir PATH" type="path" default="current working directory">
+  Root directory of the crate.
+</ParamField>
+
+<ParamField body="-P / --property KEY=VALUE" type="string">
+  Additional metadata property. Repeatable.
+</ParamField>
+
+---
+
+## `rocrate add workflow PATH`
+
+Upgrades a file already in the crate to a `ComputationalWorkflow` entity with the correct type triple `["File", "SoftwareSourceCode", "ComputationalWorkflow"]`. It also creates a linked `ComputerLanguage` contextual entity and marks the workflow as the crate's `mainEntity`.
+
+```bash
+rocrate add workflow sort-and-change-case.ga -l galaxy
+rocrate add workflow pipeline.nf -l nextflow -P version="22.10"
+```
+
+<ParamField body="PATH" type="path" required>
+  Path to the workflow file. Must exist inside the crate directory.
+</ParamField>
+
+<ParamField body="-l / --language" type="choice" default="cwl">
+  The workflow language. Accepted values:
+
+  | Value | Language |
+  |---|---|
+  | `cwl` | Common Workflow Language |
+  | `galaxy` | Galaxy |
+  | `knime` | KNIME |
+  | `nextflow` | Nextflow |
+  | `snakemake` | Snakemake |
+  | `compss` | COMPSs Programming Model |
+  | `autosubmit` | Autosubmit |
+</ParamField>
+
+<ParamField body="-c / --crate-dir PATH" type="path" default="current working directory">
+  Root directory of the crate.
+</ParamField>
+
+<ParamField body="-P / --property KEY=VALUE" type="string">
+  Additional metadata property. Repeatable.
+</ParamField>
+
+The full help output for this subcommand:
+
+```console
+$ rocrate add workflow --help
+Usage: rocrate add workflow [OPTIONS] PATH
+
+Options:
+  -l, --language [cwl|galaxy|knime|nextflow|snakemake|compss|autosubmit]
+                                  The workflow language.
+  -c, --crate-dir PATH            The path to the root data entity of the
+                                  crate. Defaults to the current working
+                                  directory.
+  -P, --property KEY=VALUE        Add an additional property to the metadata
+                                  for this entity. Can be used multiple times
+                                  to set multiple properties.
+  --help                          Show this message and exit.
+```
+
+---
+
+## `rocrate add test-suite`
+
+Creates a `TestSuite` contextual entity in the crate's metadata. A test suite groups together one or more test instances and their associated test definitions. The command prints the assigned suite identifier to stdout so you can capture it for subsequent commands.
+
+```bash
+rocrate add test-suite -i '#test1' -n "Sort and change case tests"
+```
+
+<ParamField body="-i / --identifier" type="string">
+  Explicit identifier for the suite (e.g., `#test1`). If omitted, one is generated automatically.
+</ParamField>
+
+<ParamField body="-n / --name" type="string">
+  Human-readable name for the test suite.
+</ParamField>
+
+<ParamField body="-m / --main-entity" type="string">
+  The `@id` of the workflow entity that this suite tests.
+</ParamField>
+
+<ParamField body="-c / --crate-dir PATH" type="path" default="current working directory">
+  Root directory of the crate.
+</ParamField>
+
+---
+
+## `rocrate add test-instance SUITE URL`
+
+Adds a `TestInstance` to an existing `TestSuite`. A test instance represents one execution environment (e.g., a Jenkins build, a GitHub Actions run) for the suite. The assigned instance identifier is printed to stdout.
+
+```bash
+rocrate add test-instance '#test1' http://example.com -r jobs -s jenkins -i '#test1_1'
+```
+
+<ParamField body="SUITE" type="string" required>
+  The `@id` of the `TestSuite` entity to attach this instance to (e.g., `#test1`).
+</ParamField>
+
+<ParamField body="URL" type="string" required>
+  Base URL of the CI service running this test instance.
+</ParamField>
+
+<ParamField body="-r / --resource" type="string" default='""'>
+  The resource path appended to the URL to locate the specific build (e.g., `jobs`).
+</ParamField>
+
+<ParamField body="-s / --service" type="choice" default="jenkins">
+  The CI service type. Accepted values:
+
+  | Value | Service |
+  |---|---|
+  | `jenkins` | Jenkins |
+  | `travis` | Travis CI |
+  | `github` | GitHub Actions |
+</ParamField>
+
+<ParamField body="-i / --identifier" type="string">
+  Explicit identifier for the instance (e.g., `#test1_1`).
+</ParamField>
+
+<ParamField body="-n / --name" type="string">
+  Human-readable name for this test instance.
+</ParamField>
+
+<ParamField body="-c / --crate-dir PATH" type="path" default="current working directory">
+  Root directory of the crate.
+</ParamField>
+
+---
+
+## `rocrate add test-definition SUITE PATH`
+
+Registers a test definition file (e.g., a Planemo YAML test file) and attaches it to a `TestSuite`. The file must already exist inside the crate directory.
+
+```bash
+rocrate add test-definition '#test1' test/test1/sort-and-change-case-test.yml \
+  -e planemo -v '>=0.70'
+```
+
+<ParamField body="SUITE" type="string" required>
+  The `@id` of the `TestSuite` entity to attach this definition to.
+</ParamField>
+
+<ParamField body="PATH" type="path" required>
+  Path to the test definition file. Must exist inside the crate directory.
+</ParamField>
+
+<ParamField body="-e / --engine" type="choice" default="planemo">
+  The test engine used to run the definition. Currently accepted value: `planemo`.
+</ParamField>
+
+<ParamField body="-v / --engine-version" type="string">
+  Version constraint for the test engine (e.g., `>=0.70`).
+</ParamField>
+
+<ParamField body="-c / --crate-dir PATH" type="path" default="current working directory">
+  Root directory of the crate.
+</ParamField>
+
+---
+
+## `rocrate write-zip DST`
+
+Packages the entire crate directory into a ZIP archive at the destination path `DST`. The crate must already have a valid `ro-crate-metadata.json`.
+
+```bash
+rocrate write-zip my-crate.zip
+rocrate write-zip /tmp/workflow-crate.zip -c /path/to/crate
+```
+
+<ParamField body="DST" type="path" required>
+  The destination path for the ZIP file (must be writable).
+</ParamField>
+
+<ParamField body="-c / --crate-dir PATH" type="path" default="current working directory">
+  Root directory of the crate to archive.
+</ParamField>
+
+---
+
+## Full Galaxy workflow example
+
+The following end-to-end walkthrough builds complete workflow testing metadata for a Galaxy crate from a bare directory tree. It mirrors the example from the `ro-crate-py` README.
+
+<Steps>
+  <Step title="Navigate into the crate directory and initialize">
+    ```bash
+    cd test/test-data/ro-crate-galaxy-sortchangecase
+    rm ro-crate-metadata.json   # remove any existing metadata
+    rocrate init
+    ```
+
+    At this point all files are listed as plain `File` entities. The Galaxy workflow `sort-and-change-case.ga` has no special type yet.
+  </Step>
+
+  <Step title="Register the Galaxy workflow">
+    ```bash
+    rocrate add workflow -l galaxy sort-and-change-case.ga
+    ```
+
+    This promotes the workflow entry to type `["File", "SoftwareSourceCode", "ComputationalWorkflow"]`, links a `ComputerLanguage` entity for Galaxy, and sets the workflow as the crate's `mainEntity`.
+  </Step>
+
+  <Step title="Add a test suite">
+    ```bash
+    rocrate add test-suite -i '#test1'
+    ```
+
+    Output:
+
+    ```
+    #test1
+    ```
+
+    The suite identifier is echoed to stdout so you can capture it with `$(...)` in scripts.
+  </Step>
+
+  <Step title="Add a test instance to the suite">
+    ```bash
+    rocrate add test-instance '#test1' http://example.com -r jobs -i '#test1_1'
+    ```
+
+    Output:
+
+    ```
+    #test1_1
+    ```
+
+    This registers a Jenkins test instance (the default service) pointing to `http://example.com` with resource path `jobs`.
+  </Step>
+
+  <Step title="Add a Planemo test definition">
+    ```bash
+    rocrate add test-definition '#test1' \
+      test/test1/sort-and-change-case-test.yml \
+      -e planemo -v '>=0.70'
+    ```
+
+    The YAML file is registered as a `File` with engine `planemo` and the version constraint `>=0.70` recorded in the metadata.
+  </Step>
+
+  <Step title="Add extra files and datasets after init">
+    Any file or directory you copy into the crate later can be registered with `rocrate add file` or `rocrate add dataset`:
+
+    ```bash
+    cp ../sample_file.txt .
+    rocrate add file sample_file.txt -P name=sample -P description="Sample file"
+
+    cp -r ../test_add_dir .
+    rocrate add dataset test_add_dir
+    ```
+  </Step>
+
+  <Step title="Package the crate as a ZIP">
+    ```bash
+    rocrate write-zip workflow-crate.zip
+    ```
+
+    The resulting `workflow-crate.zip` contains the full directory tree and the completed `ro-crate-metadata.json`.
+  </Step>
+</Steps>
+
+<Tip>
+Use shell command substitution to pipe suite and instance identifiers between commands in a script:
+
+```bash
+SUITE=$(rocrate add test-suite -n "My tests")
+INSTANCE=$(rocrate add test-instance "$SUITE" https://ci.example.com -r jobs)
+rocrate add test-definition "$SUITE" tests/my-tests.yml -e planemo -v '>=0.70'
+```
+</Tip>

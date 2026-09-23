@@ -1,0 +1,96 @@
+---
+title: "rocrate CLI: Command-Line Interface Overview"
+sidebarTitle: "Overview"
+description: "The rocrate CLI tool lets you initialize RO-Crates and add entities from the shell. Built on Click with init, add, and write-zip commands."
+---
+
+The `rocrate` command-line tool ships alongside the `ro-crate-py` Python library and gives you a fast, scriptable way to create and modify Research Object Crates directly from your terminal — no Python code required. It is built on the [Click](https://click.palletsprojects.com/) framework and exposes the same core operations available through the Python API: initializing a directory as an RO-Crate, registering entities in the metadata, and packaging a crate into a ZIP archive.
+
+## When to use the CLI vs the Python API
+
+Use the CLI when you need to:
+
+- Quickly initialize an existing directory tree as an RO-Crate in a shell script or CI pipeline.
+- Register a workflow, file, or dataset in a crate's metadata without writing Python.
+- Integrate RO-Crate creation into `Makefile` targets or batch processing scripts.
+
+Reach for the **Python API** when you need to:
+
+- Create crates programmatically with complex entity relationships.
+- Add contextual entities (people, organizations, events) not exposed by the CLI.
+- Read and inspect existing crates at runtime.
+
+## Installation
+
+The `rocrate` command is installed automatically when you install the library via `pip`. No extra steps are required.
+
+```bash
+pip install rocrate
+```
+
+After installation, the tool should be available on your `PATH`:
+
+```console
+$ rocrate --help
+Usage: rocrate [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  add
+  init
+  write-zip
+```
+
+## Command tree
+
+The top-level usage pattern is:
+
+```
+rocrate [OPTIONS] COMMAND [ARGS]...
+```
+
+`rocrate` itself accepts only the global `--help` flag. All functionality lives in one of three top-level commands:
+
+| Command | Purpose |
+|---|---|
+| `rocrate init` | Scan a directory and generate `ro-crate-metadata.json` |
+| `rocrate add` | Register entities in an existing crate's metadata |
+| `rocrate write-zip` | Package a crate directory into a ZIP archive |
+
+`rocrate add` is itself a command group with six subcommands:
+
+```
+rocrate add
+├── file
+├── dataset
+├── workflow
+├── test-suite
+├── test-instance
+└── test-definition
+```
+
+## The `-c / --crate-dir` option
+
+Most subcommands accept a `-c` / `--crate-dir PATH` option that points to the root directory of the crate you want to operate on. When omitted, it defaults to the current working directory. This makes it convenient to run commands from anywhere on your filesystem:
+
+```bash
+rocrate init -c /path/to/my-project
+rocrate add workflow -c /path/to/my-project -l galaxy sort-and-change-case.ga
+```
+
+<Note>
+The `--crate-dir` option expects the **root** of the crate directory — the directory that will contain (or already contains) `ro-crate-metadata.json`. It is **not** a path to the metadata file itself.
+</Note>
+
+## Explore the subcommands
+
+<CardGroup cols={2}>
+  <Card title="rocrate init" icon="folder-plus" href="/cli/init">
+    Scan a directory tree and generate an `ro-crate-metadata.json` file listing all files and directories as `File` and `Dataset` entities.
+  </Card>
+  <Card title="rocrate add" icon="circle-plus" href="/cli/add">
+    Register files, datasets, workflows, and test metadata entities in an existing crate's `ro-crate-metadata.json`.
+  </Card>
+</CardGroup>

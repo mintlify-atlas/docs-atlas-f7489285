@@ -1,0 +1,282 @@
+---
+title: "File Entity — Data Entity for File Resources"
+sidebarTitle: "File"
+description: "The File class represents a file data entity in an RO-Crate. Supports local files, remote URLs, optional download, and size recording."
+---
+
+The `File` class is ro-crate-py's primary data entity for individual file resources. It sits in the class hierarchy as `File → FileOrDir → DataEntity → Entity` and is responsible for tracking a file's identity inside the crate, copying or streaming its bytes on write, and optionally recording metadata such as `contentSize` and `encodingFormat`. Every file you add to a crate — whether a local path, a remote URL, or an in-memory stream — is represented by a `File` instance.
+
+## Creating a File Entity
+
+The recommended way to add a file is through `ROCrate.add_file()`. Direct instantiation is supported but bypasses automatic registration in the crate's entity map.
+
+```python
+# Preferred — registers the entity in the crate automatically
+file_entity = crate.add_file(
+    source,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+    record_size=False,
+)
+
+# Direct instantiation (advanced use)
+from rocrate.model.file import File
+file_entity = File(crate, source, dest_path, fetch_remote, validate_url, properties, record_size)
+crate.add(file_entity)
+```
+
+### Parameters
+
+<ParamField path="source" type="str | Path | StringIO | BytesIO | None">
+  The origin of the file content. Accepted values:
+
+  - **Local path** (`str` or `pathlib.Path`) — the file is copied into the crate on `write()`.
+  - **Remote URL** (`str` starting with `http://` or `https://`) — the URL becomes the entity's `@id` unless `fetch_remote=True`, in which case the file is downloaded and stored under `dest_path`.
+  - **`StringIO` / `BytesIO`** — in-memory content; `dest_path` **must** be supplied.
+  - **`None`** — creates a sourceless file entry (records the entity in metadata without any backing content). A warning is emitted when writing.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None" default="None">
+  Relative path inside the crate where the file will be written. Must be a **relative** path; an absolute path raises `ValueError`. When omitted, the identifier defaults to the basename of `source`. For remote URLs with `fetch_remote=False`, the full URL is used as the `@id`.
+</ParamField>
+
+<ParamField path="fetch_remote" type="bool" default="False">
+  When `True` and `source` is a URL, the remote file is downloaded and written to `dest_path` on `write()`. Also sets `contentUrl` in the JSON-LD metadata to the original URL.
+</ParamField>
+
+<ParamField path="validate_url" type="bool" default="False">
+  When `True`, ro-crate-py issues an HTTP `HEAD` request during serialization to populate `contentSize`, `encodingFormat`, and (when `fetch_remote=False`) `sdDatePublished` from the response headers. No bytes are downloaded unless `fetch_remote` is also `True`.
+</ParamField>
+
+<ParamField path="record_size" type="bool" default="False">
+  When `True`, the `contentSize` property is written to the JSON-LD metadata after the file has been streamed or copied. The value is the byte count as a string (per the RO-Crate spec).
+</ParamField>
+
+<ParamField path="properties" type="dict | None" default="None">
+  Extra JSON-LD properties to merge into the entity at creation time. You can include any Schema.org or custom keys here, for example `{"encodingFormat": "text/csv", "description": "Raw measurements"}`. The `@type` key can be extended this way too.
+</ParamField>
+
+---
+
+## Entity Identity (`@id`)
+
+The `@id` of a `File` entity is derived from `dest_path` (or `source` basename when `dest_path` is omitted). Paths are **percent-encoded** automatically using `urllib.parse.quote`. For example, a file named `my data.csv` gets the identifier `my%20data.csv`.
+
+For remote files where `fetch_remote=False`, the raw URL is preserved as the `@id`:
+
+```python
+# @id will be "https://example.org/data.zip"
+remote = crate.add_file("https://example.org/data.zip")
+print(remote.id)  # "https://example.org/data.zip"
+```
+
+When `fetch_remote=True`, the basename of the URL (or `dest_path`) is used:
+
+```python
+# @id will be "data.zip", file is downloaded on write
+remote = crate.add_file("https://example.org/data.zip", fetch_remote=True)
+print(remote.id)  # "data.zip"
+```
+
+---
+
+## Default Type
+
+The default JSON-LD `@type` for a `File` is `"File"`. You can extend it by passing extra types through `properties`:
+
+```python
+crate.add_file(
+    "workflow.cwl",
+    properties={"@type": ["File", "SoftwareSourceCode"]}
+)
+```
+
+<Note>
+  Subclasses such as `ComputationalWorkflow` automatically set a richer `@type` list. Prefer the dedicated factory methods (e.g. `crate.add_workflow()`) for typed entities.
+</Note>
+
+---
+
+## Usage Examples
+
+### Local file
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+
+# Add a local CSV, record its size in metadata
+measurements = crate.add_file(
+    "data/measurements.csv",
+    properties={"encodingFormat": "text/csv"},
+    record_size=True,
+)
+print(measurements.id)       # "measurements.csv"
+print(measurements["contentSize"])  # e.g. "2048"
+```
+
+### Remote file — reference only (no download)
+
+```python
+# The URL is stored as @id; nothing is downloaded
+remote = crate.add_file("https://example.org/dataset.zip")
+print(remote.id)  # "https://example.org/dataset.zip"
+```
+
+### Remote file — download on write
+
+```python
+# File is fetched when crate.write() is called
+remote = crate.add_file(
+    "https://example.org/dataset.zip",
+    fetch_remote=True,
+    dest_path="dataset.zip",
+)
+crate.write("/tmp/my-crate")  # downloads dataset.zip into /tmp/my-crate/
+```
+
+### Remote file — validate URL only
+
+```python
+# Issues a HEAD request; populates contentSize and encodingFormat
+remote = crate.add_file(
+    "https://example.org/report.pdf",
+    validate_url=True,
+)
+# After serialization: remote["contentSize"] and remote["encodingFormat"] are set
+```
+
+### In-memory content (StringIO / BytesIO)
+
+```python
+from io import StringIO, BytesIO
+
+# dest_path is required when source is a stream
+txt = crate.add_file(source=StringIO("hello, world"), dest_path="hello.txt")
+img = crate.add_file(source=BytesIO(b"\x89PNG..."), dest_path="logo.png")
+```
+
+### File with a custom destination path
+
+```python
+# Source is at /tmp/report.csv but stored as reports/2024.csv in the crate
+crate.add_file("/tmp/report.csv", dest_path="reports/2024.csv")
+```
+
+### Sourceless file (metadata-only)
+
+```python
+# Records the entity in the crate without copying any bytes
+ghost = crate.add_file(
+    source=None,
+    dest_path="legacy/old-data.bin",
+    properties={"description": "Archived externally"},
+)
+# Emits a warning when crate.write() is called
+```
+
+---
+
+## Methods
+
+### `write(base_path)`
+
+Writes the file to the filesystem under `base_path`.
+
+```python
+def write(self, base_path: str | Path) -> None
+```
+
+Behaviour depends on `source`:
+
+| Source type | `fetch_remote` | Action |
+|---|---|---|
+| Local path | — | `shutil.copy` to `base_path / id` |
+| URL | `False` | Consumes stream headers only (for `validate_url`) |
+| URL | `True` | Downloads bytes to `base_path / dest_path` |
+| `StringIO` / `BytesIO` | — | Writes encoded bytes to `base_path / dest_path` |
+| `None` | — | Emits `UserWarning`, no file written |
+
+<Warning>
+  `write()` is called automatically by `crate.write(base_path)` and `crate.write_zip()`. You should rarely need to call it directly.
+</Warning>
+
+---
+
+### `stream(chunk_size=8192)`
+
+A generator that yields `(relative_path, bytes)` pairs. Used internally by `crate.write_zip()` and `crate.stream_zip()` to stream crate contents without writing to disk.
+
+```python
+def stream(self, chunk_size: int = 8192) -> Generator[tuple[str, bytes], None, None]
+```
+
+Each iteration yields a `(str, bytes)` tuple where the first element is the file's `@id` (relative to the crate root) and the second is a chunk of raw bytes.
+
+```python
+for path, chunk in file_entity.stream():
+    print(f"{path}: {len(chunk)} bytes")
+```
+
+<Tip>
+  `stream()` is the foundation for streaming a full crate as a ZIP via `crate.stream_zip()`. You can use it directly to build custom streaming pipelines — for example, to upload crate contents to object storage without touching the local filesystem.
+</Tip>
+
+Side effects during streaming:
+
+- When `record_size=True`, `contentSize` is set on the entity after the stream is exhausted.
+- When `validate_url=True`, a `HEAD` request populates `contentSize` and `encodingFormat` before any bytes are yielded.
+- When `fetch_remote=True`, `contentUrl` is set on the entity to the original URL.
+
+---
+
+## Streaming Example (FastAPI)
+
+The following pattern — taken from the bundled FastAPI example — shows how to stream a crate containing both a remote URL file and an in-memory string file directly to an HTTP client:
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from rocrate.rocrate import ROCrate
+from io import StringIO
+
+app = FastAPI()
+
+@app.get("/crate")
+async def get_crate():
+    crate = ROCrate()
+
+    crate.add_file(
+        "https://raw.githubusercontent.com/ResearchObject/ro-crate-py/refs/heads/master/test/test-data/sample_file.txt",
+        fetch_remote=True,
+    )
+    crate.add_file(
+        source=StringIO("Hello, World!"),
+        dest_path="test-data/hello.txt",
+    )
+
+    return StreamingResponse(
+        crate.stream_zip(),
+        media_type="application/rocrate+zip",
+        headers={"Content-Disposition": "attachment; filename=crate.zip"},
+    )
+```
+
+---
+
+## Class Hierarchy
+
+```
+Entity
+└── DataEntity
+    └── FileOrDir
+        └── File
+            └── ComputationalWorkflow
+                ├── WorkflowDescription
+                └── Workflow  (legacy)
+```
+
+`FileOrDir` handles the shared constructor logic — `dest_path` resolution, percent-encoding of the identifier, and the `fetch_remote`, `validate_url`, and `record_size` flags — so `File` itself can focus purely on file I/O operations.

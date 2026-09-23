@@ -1,0 +1,152 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "ro-crate-py",
+  "projectDescription": "A Python library for creating, reading, and manipulating Research Object Crates (RO-Crates) — a standards-based format for packaging research data with rich JSON-LD metadata.",
+  "theme": "luma",
+  "primaryColor": "#eb9419",
+  "lightColor": "#377cc7",
+  "darkColor": "#6380bc",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-crates",
+              "guides/reading-crates",
+              "guides/entities",
+              "guides/workflows",
+              "guides/detached-crates",
+              "guides/subcrates"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/overview",
+              "cli/init",
+              "cli/add"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/rocrate",
+              "api/entity",
+              "api/metadata"
+            ]
+          },
+          {
+            "group": "Data Entities",
+            "pages": [
+              "api/file",
+              "api/dataset",
+              "api/computational-workflow"
+            ]
+          },
+          {
+            "group": "Contextual Entities",
+            "pages": [
+              "api/context-entity",
+              "api/person",
+              "api/computer-language"
+            ]
+          },
+          {
+            "group": "Testing Entities",
+            "pages": [
+              "api/test-suite",
+              "api/test-instance",
+              "api/test-definition"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Create RO-Crates programmatically with files, datasets, and rich JSON-LD metadata",
+    "Read and consume existing RO-Crates from directories, zip archives, URLs, or dict objects",
+    "Support for RO-Crate specifications 1.0, 1.1, and 1.2 (including detached crates in 1.2)",
+    "Workflow RO-Crate profile support with CWL, Galaxy, Nextflow, Snakemake, KNIME, COMPSs, and Autosubmit",
+    "Nested/subcrate support for hierarchical crate structures (RO-Crate 1.2)",
+    "Streaming zip serialization for serving crates from web APIs without writing to disk",
+    "Testing metadata support via ro-terms TestSuite, TestInstance, and TestDefinition entities",
+    "Command-line interface (rocrate) for initializing crates and adding entities from the shell",
+    "JSON-LD patch API (add_jsonld, update_jsonld, add_or_update_jsonld) for modifying crates from dictionaries",
+    "Automatic percent-encoding of special characters in entity identifiers"
+  ],
+  "publicApiSurface": [
+    "ROCrate(source, gen_preview, init, exclude, version, load_subcrates, root_dataset_id)",
+    "ROCrate.add_file(source, dest_path, fetch_remote, validate_url, properties, record_size)",
+    "ROCrate.add_dataset(source, dest_path, fetch_remote, validate_url, properties)",
+    "ROCrate.add_subcrate(source, dest_path, fetch_remote, validate_url, properties)",
+    "ROCrate.add_tree(source, dest_path, properties)",
+    "ROCrate.add_workflow(source, dest_path, fetch_remote, validate_url, properties, main, lang, lang_version, gen_cwl, cls, record_size)",
+    "ROCrate.add_test_suite(identifier, name, main_entity, properties)",
+    "ROCrate.add_test_instance(suite, url, resource, service, identifier, name, properties)",
+    "ROCrate.add_test_definition(suite, source, dest_path, fetch_remote, validate_url, properties, engine, engine_version, record_size)",
+    "ROCrate.add_formal_parameter(name, additionalType, identifier, description, valueRequired, defaultValue, properties)",
+    "ROCrate.add_action(instrument, identifier, object, result, properties)",
+    "ROCrate.add_jsonld(jsonld)",
+    "ROCrate.update_jsonld(jsonld)",
+    "ROCrate.add_or_update_jsonld(jsonld)",
+    "ROCrate.add(*entities)",
+    "ROCrate.delete(*entities)",
+    "ROCrate.dereference(entity_id, default)",
+    "ROCrate.get_entities()",
+    "ROCrate.get_by_type(type_, exact)",
+    "ROCrate.write(base_path)",
+    "ROCrate.write_zip(out_path)",
+    "ROCrate.write_detached(metadata_path)",
+    "ROCrate.stream_zip(chunk_size)",
+    "ROCrate.data_entities",
+    "ROCrate.contextual_entities",
+    "ROCrate.subcrate_entities",
+    "ROCrate.default_entities",
+    "ROCrate.root_dataset",
+    "ROCrate.metadata",
+    "ROCrate.version",
+    "ROCrate.test_suites",
+    "Entity.__getitem__ / __setitem__ (dict-like property access)",
+    "Entity.append_to(key, value, compact)",
+    "Entity.properties()",
+    "Entity.type",
+    "Entity.id",
+    "Entity.delete()",
+    "Person(crate, identifier, properties)",
+    "ContextEntity(crate, identifier, properties)",
+    "ComputationalWorkflow",
+    "ComputerLanguage",
+    "Dataset",
+    "File",
+    "Metadata",
+    "TestSuite",
+    "TestInstance",
+    "TestDefinition",
+    "Subcrate",
+    "rocrate init [--gen-preview] [--exclude NAME] [-c PATH] [--crate-version VERSION]",
+    "rocrate add file PATH [-c PATH] [-P KEY=VALUE]",
+    "rocrate add dataset PATH [-c PATH] [-P KEY=VALUE]",
+    "rocrate add workflow PATH [-l LANGUAGE] [-c PATH] [-P KEY=VALUE]",
+    "rocrate add test-suite [-i ID] [-n NAME] [-m MAIN_ENTITY] [-c PATH]",
+    "rocrate add test-instance SUITE URL [-r RESOURCE] [-s SERVICE] [-i ID] [-c PATH]",
+    "rocrate add test-definition SUITE PATH [-e ENGINE] [-v VERSION] [-c PATH]",
+    "rocrate write-zip DST [-c PATH]"
+  ]
+}

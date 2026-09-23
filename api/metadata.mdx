@@ -1,0 +1,315 @@
+---
+title: "Metadata Class — RO-Crate Metadata Descriptor"
+sidebarTitle: "Metadata"
+description: "The Metadata class represents ro-crate-metadata.json, handling JSON-LD generation, supported spec versions, context extension, and file writing."
+---
+
+The `Metadata` class models the `ro-crate-metadata.json` descriptor that every valid RO-Crate must contain. It is a specialised `File` entity whose `generate()` method assembles the full `@context` + `@graph` document from every entity registered in the crate. You rarely need to instantiate `Metadata` directly — `ROCrate` creates and manages it automatically — but understanding its API is useful when you need to extend the JSON-LD context or write a detached crate descriptor.
+
+## Supported Versions
+
+The following RO-Crate specification versions are accepted by the `version` parameter:
+
+| Version string | Notes |
+|---|---|
+| `"1.0"` | Legacy — uses `ro-crate-metadata.jsonld` as filename |
+| `"1.0-DRAFT"` | Legacy draft |
+| `"1.1"` | Uses `ro-crate-metadata.json` |
+| `"1.1-DRAFT"` | Draft of 1.1 |
+| `"1.2"` | **Default** |
+| `"1.2-DRAFT"` | Draft of 1.2 |
+
+Passing any other value raises `ValueError` immediately.
+
+<Tip>
+  The default version is `"1.2"`. Older crates read from disk retain the
+  version declared in their `conformsTo` URI, so you can round-trip existing
+  1.1 crates without losing metadata.
+</Tip>
+
+## Constructor
+
+```python
+from rocrate.model import Metadata
+
+md = Metadata(crate, source=None, dest_path=None, properties=None, version="1.2")
+```
+
+<ParamField path="crate" type="ROCrate">
+  The parent crate. The `Metadata` entity holds a reference as `self.crate`.
+</ParamField>
+
+<ParamField path="source" type="str | Path | None" default="None">
+  An existing `ro-crate-metadata.json` file to use as the physical source
+  when reading a crate. When `None` the content is generated on the fly by
+  `generate()`.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None" default="None">
+  Destination filename within the crate. Defaults to `ro-crate-metadata.json`
+  for version ≥ 1.1, or `ro-crate-metadata.jsonld` for version 1.0.
+</ParamField>
+
+<ParamField path="properties" type="dict | None" default="None">
+  Additional JSON-LD properties to merge into the metadata entity (e.g.
+  custom `conformsTo` entries). These are layered on top of the default
+  `CreativeWork` template.
+</ParamField>
+
+<ParamField path="version" type="str" default='"1.2"'>
+  The RO-Crate specification version. Must be one of the supported version
+  strings listed above.
+</ParamField>
+
+---
+
+## Properties
+
+<ResponseField name="version" type="str">
+  The RO-Crate spec version string set at construction time (e.g. `"1.2"`).
+</ResponseField>
+
+<ResponseField name="profile" type="str">
+  The `conformsTo` URI constructed from `version`:
+  `https://w3id.org/ro/crate/{version}`.
+
+  ```python
+  print(crate.metadata.profile)
+  # "https://w3id.org/ro/crate/1.2"
+  ```
+</ResponseField>
+
+<ResponseField name="root" type="RootDataset">
+  A convenience shortcut that returns `crate.root_dataset`. Useful when you
+  have a reference only to the `Metadata` entity.
+
+  ```python
+  root = crate.metadata.root
+  print(root.id)  # "./"
+  ```
+</ResponseField>
+
+<ResponseField name="extra_contexts" type="list">
+  A mutable list of additional JSON-LD context URLs or inline context dicts
+  to include in the generated `@context` array. Appended after the canonical
+  RO-Crate context URL.
+
+  ```python
+  crate.metadata.extra_contexts.append(
+      "https://schema.org/docs/jsonldcontext.json"
+  )
+  ```
+</ResponseField>
+
+<ResponseField name="extra_terms" type="dict">
+  A mutable dict of extra term definitions added as an inline context entry.
+  Merged automatically when non-empty. Used internally by
+  `add_test_suite` / `add_test_instance` / `add_test_definition` to inject
+  `TESTING_EXTRA_TERMS`.
+
+  ```python
+  crate.metadata.extra_terms["myTerm"] = "https://example.org/myTerm"
+  ```
+</ResponseField>
+
+---
+
+## Methods
+
+### `generate`
+
+```python
+crate.metadata.generate()
+```
+
+Build and return the complete JSON-LD document for the crate. The result is a dict with two top-level keys:
+
+- `@context` — either a single string (the canonical context URL) or a list when `extra_contexts` or `extra_terms` are present.
+- `@graph` — a list of raw JSON-LD property dicts, one per entity in the crate.
+
+<ResponseField name="return" type="dict">
+  The full `ro-crate-metadata.json` structure, ready for `json.dumps`.
+</ResponseField>
+
+```python
+import json
+
+doc = crate.metadata.generate()
+print(json.dumps(doc, indent=4))
+```
+
+<Note>
+  `generate()` calls `entity.properties()` on every registered entity, which
+  returns the raw (non-dereferenced) JSON-LD dict. Entity cross-references
+  remain as `{"@id": "..."}` objects in the output.
+</Note>
+
+---
+
+### `write`
+
+```python
+crate.metadata.write(dest_base)
+```
+
+Serialise the crate metadata and write it to `dest_base / ro-crate-metadata.json` (or the legacy `.jsonld` filename for version 1.0). Called automatically by `crate.write()`.
+
+<ParamField path="dest_base" type="str | Path">
+  The crate's root output directory. The metadata filename is appended
+  automatically.
+</ParamField>
+
+```python
+crate.metadata.write("/output/my-crate")
+# writes /output/my-crate/ro-crate-metadata.json
+```
+
+---
+
+### `write_detached`
+
+```python
+crate.metadata.write_detached(path)
+```
+
+Write only the metadata file to an arbitrary path, without copying any payload files. Used for creating detached crate descriptors where the physical files are hosted separately (e.g. on a remote storage system).
+
+<ParamField path="path" type="str | Path">
+  The full destination path for the metadata file. Should follow the naming
+  convention `*-ro-crate-metadata.json` (a warning is emitted otherwise).
+</ParamField>
+
+<Warning>
+  A `UserWarning` is issued if the filename does not match the pattern
+  `.*-ro-crate-metadata.json$`. This is a convention, not a hard error, but
+  tools consuming detached crates typically expect the conventional name.
+</Warning>
+
+```python
+crate.metadata.write_detached("dataset-v1-ro-crate-metadata.json")
+```
+
+---
+
+## Extending the JSON-LD Context
+
+RO-Crate's JSON-LD context covers the core schema.org and RO-Crate vocabulary. When you need terms outside that vocabulary you can extend it in two ways:
+
+**Adding a remote context URL:**
+
+```python
+crate.metadata.extra_contexts.append(
+    "https://w3id.org/ro/terms/test"
+)
+```
+
+**Adding inline term definitions:**
+
+```python
+crate.metadata.extra_terms.update({
+    "myProperty": "https://example.org/vocab#myProperty",
+    "MyClass": "https://example.org/vocab#MyClass",
+})
+```
+
+When both `extra_contexts` and `extra_terms` are non-empty the generated `@context` is a list:
+
+```json
+{
+  "@context": [
+    "https://w3id.org/ro/crate/1.2/context",
+    "https://w3id.org/ro/terms/test",
+    {
+      "myProperty": "https://example.org/vocab#myProperty"
+    }
+  ]
+}
+```
+
+---
+
+## `TESTING_EXTRA_TERMS`
+
+When test entities are added to a crate via `add_test_suite`, `add_test_instance`, or `add_test_definition`, the library automatically merges `TESTING_EXTRA_TERMS` into `metadata.extra_terms`. This constant defines the following terms from the RO-Terms test vocabulary:
+
+```python
+from rocrate.model.metadata import TESTING_EXTRA_TERMS
+
+# TESTING_EXTRA_TERMS = {
+#     "TestSuite":      "https://w3id.org/ro/terms/test#TestSuite",
+#     "TestInstance":   "https://w3id.org/ro/terms/test#TestInstance",
+#     "TestService":    "https://w3id.org/ro/terms/test#TestService",
+#     "TestDefinition": "https://w3id.org/ro/terms/test#TestDefinition",
+#     "PlanemoEngine":  "https://w3id.org/ro/terms/test#PlanemoEngine",
+#     "JenkinsService": "https://w3id.org/ro/terms/test#JenkinsService",
+#     "TravisService":  "https://w3id.org/ro/terms/test#TravisService",
+#     "GithubService":  "https://w3id.org/ro/terms/test#GithubService",
+#     "instance":       "https://w3id.org/ro/terms/test#instance",
+#     "runsOn":         "https://w3id.org/ro/terms/test#runsOn",
+#     "resource":       "https://w3id.org/ro/terms/test#resource",
+#     "definition":     "https://w3id.org/ro/terms/test#definition",
+#     "engineVersion":  "https://w3id.org/ro/terms/test#engineVersion",
+# }
+```
+
+You can reference these terms in your own entities or merge the constant into `extra_terms` directly when building test-aware crates manually:
+
+```python
+from rocrate.model.metadata import TESTING_EXTRA_TERMS
+
+crate.metadata.extra_terms.update(TESTING_EXTRA_TERMS)
+```
+
+---
+
+## Filenames by Version
+
+| Version | Default filename |
+|---|---|
+| `1.0`, `1.0-DRAFT` | `ro-crate-metadata.jsonld` |
+| `1.1`, `1.1-DRAFT`, `1.2`, `1.2-DRAFT` | `ro-crate-metadata.json` |
+
+<Info>
+  The constants `BASENAME = "ro-crate-metadata.json"` and
+  `LEGACY_BASENAME = "ro-crate-metadata.jsonld"` are exported from
+  `rocrate.model.metadata` for use in tooling that needs to locate the
+  metadata file.
+</Info>
+
+---
+
+## Default JSON-LD Structure
+
+A freshly created `Metadata` entity produces the following default properties before any user modifications:
+
+```json
+{
+  "@id": "ro-crate-metadata.json",
+  "@type": "CreativeWork",
+  "conformsTo": {"@id": "https://w3id.org/ro/crate/1.2"},
+  "about": {"@id": "./"}
+}
+```
+
+The `conformsTo` URI is built from `profile`, and `about` links back to the root dataset. When `add_workflow` is called with `main=True`, additional workflow profile URIs are appended to `conformsTo` as a list.
+
+---
+
+## Accessing the Metadata Entity
+
+```python
+crate = ROCrate()
+
+# Via the crate shortcut
+print(crate.metadata.version)     # "1.2"
+print(crate.metadata.profile)     # "https://w3id.org/ro/crate/1.2"
+
+# As a regular entity lookup
+md = crate.get("ro-crate-metadata.json")
+print(md["conformsTo"])           # the auto-dereferenced conformsTo entity
+
+# Inspect the generated document
+import json
+doc = crate.metadata.generate()
+print(json.dumps(doc, indent=4, ensure_ascii=False))
+```

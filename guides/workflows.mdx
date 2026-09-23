@@ -1,0 +1,318 @@
+---
+title: "Packaging Scientific Workflows as RO-Crates"
+sidebarTitle: "Workflows"
+description: "Register CWL, Galaxy, Nextflow, Snakemake, KNIME, and other workflows in a Workflow RO-Crate with language metadata and test suites."
+---
+
+Scientific workflows — whether written in Galaxy, Nextflow, Snakemake, CWL, KNIME, COMPSs, or Autosubmit — can be packaged as a **Workflow RO-Crate**, a specialised profile of RO-Crate that captures the workflow file, its programming language, and optional testing metadata. The [Workflow RO-Crate profile](https://w3id.org/workflowhub/workflow-ro-crate/1.0) is a superset of the base RO-Crate specification and is recognised by platforms such as WorkflowHub.
+
+## What is a Workflow RO-Crate?
+
+A Workflow RO-Crate extends the base RO-Crate specification to describe scientific workflows. It requires the crate to identify a **main workflow** via the `mainEntity` property on the root dataset, and it requires that workflow to be linked to a `ComputerLanguage` entity describing the programming language used. When `main=True` is passed to `add_workflow`, ro-crate-py automatically sets `mainEntity` and adds the profile URI `https://w3id.org/workflowhub/workflow-ro-crate/1.0` to the metadata descriptor's `conformsTo` list.
+
+## Adding a Workflow with `add_workflow`
+
+The primary entry point for registering workflows is `crate.add_workflow`. At minimum you supply the source path, the destination path within the crate, whether it is the main workflow, and the language name.
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+
+workflow = crate.add_workflow(
+    source="sort-and-change-case.ga",
+    dest_path="sort-and-change-case.ga",
+    main=True,
+    lang="galaxy",
+    gen_cwl=False,
+)
+```
+
+The full signature is:
+
+```python
+crate.add_workflow(
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+    main=False,
+    lang="cwl",
+    lang_version=None,
+    gen_cwl=False,
+    cls=ComputationalWorkflow,
+    record_size=False,
+)
+```
+
+<Note>
+When `main=True` is set, ro-crate-py sets `crate.mainEntity` to the workflow entity and appends `https://w3id.org/workflowhub/workflow-ro-crate/1.0` to the metadata descriptor's `conformsTo` list automatically.
+</Note>
+
+### Supported Languages
+
+ro-crate-py ships with built-in `ComputerLanguage` definitions for the following workflow languages:
+
+<CardGroup cols={2}>
+  <Card title="CWL" icon="code">
+    Common Workflow Language — `lang="cwl"`
+  </Card>
+  <Card title="Galaxy" icon="flask">
+    Galaxy workflows — `lang="galaxy"`
+  </Card>
+  <Card title="Nextflow" icon="diagram-project">
+    Nextflow pipelines — `lang="nextflow"`
+  </Card>
+  <Card title="Snakemake" icon="snake">
+    Snakemake rules — `lang="snakemake"`
+  </Card>
+  <Card title="KNIME" icon="table">
+    KNIME analytics platform — `lang="knime"`
+  </Card>
+  <Card title="COMPSs" icon="server">
+    COMPSs programming model — `lang="compss"`
+  </Card>
+  <Card title="Autosubmit" icon="rotate">
+    Autosubmit scheduler — `lang="autosubmit"`
+  </Card>
+</CardGroup>
+
+Pass the language key as a string to `lang`. Each built-in language is associated with a canonical URI defined in the [Workflow RO-Crate profile](https://w3id.org/workflowhub/workflow-ro-crate/1.0).
+
+### Specifying a Language Version
+
+Use the `lang_version` parameter to capture the specific version of the workflow language used:
+
+```python
+workflow = crate.add_workflow(
+    source="pipeline.nf",
+    dest_path="pipeline.nf",
+    main=True,
+    lang="nextflow",
+    lang_version="23.04",
+)
+```
+
+This sets the `version` property on the generated `ComputerLanguage` entity and, for CWL, also updates the `identifier` URI to point to the versioned CWL specification namespace.
+
+### Accessing the Language Property
+
+Once a workflow has been added, its language entity is accessible via the `lang` (or `programmingLanguage`) property:
+
+```python
+workflow = crate.add_workflow(
+    source="Snakefile",
+    dest_path="Snakefile",
+    main=True,
+    lang="snakemake",
+)
+
+lang_entity = workflow.lang
+print(lang_entity["name"])        # "Snakemake"
+print(lang_entity["url"])         # {"@id": "https://snakemake.readthedocs.io"}
+```
+
+## Galaxy → Abstract CWL Conversion
+
+When packaging a Galaxy workflow you can optionally generate an **abstract CWL description** using the `gen_cwl=True` flag. This requires installing ro-crate-py with the optional `ga2cwl` dependency:
+
+```bash
+pip install rocrate[ga2cwl]
+```
+
+Then pass `gen_cwl=True`:
+
+```python
+workflow = crate.add_workflow(
+    source="sort-and-change-case.ga",
+    dest_path="sort-and-change-case.ga",
+    main=True,
+    lang="galaxy",
+    gen_cwl=True,
+)
+```
+
+<Warning>
+`gen_cwl=True` is only supported when `lang="galaxy"`. Passing it with any other language raises a `ValueError`.
+</Warning>
+
+When `gen_cwl=True`, ro-crate-py:
+
+1. Converts the Galaxy workflow to a temporary CWL file using `galaxy2cwl`.
+2. Adds the CWL file to the crate as a `WorkflowDescription` entity (types `["File", "SoftwareSourceCode", "HowTo"]`).
+3. Links the Galaxy workflow to the CWL description via the `subjectOf` property.
+
+## `ComputationalWorkflow` vs `WorkflowDescription`
+
+ro-crate-py exposes two classes for workflow entities:
+
+| Class | JSON-LD `@type` | Use |
+|---|---|---|
+| `ComputationalWorkflow` | `["File", "SoftwareSourceCode", "ComputationalWorkflow"]` | The main, executable workflow file |
+| `WorkflowDescription` | `["File", "SoftwareSourceCode", "HowTo"]` | An abstract description (e.g., auto-generated CWL) |
+
+You can pass the class explicitly via the `cls` parameter:
+
+```python
+from rocrate.model.computationalworkflow import ComputationalWorkflow, WorkflowDescription
+
+workflow = crate.add_workflow(
+    source="my_workflow.ga",
+    dest_path="my_workflow.ga",
+    main=True,
+    lang="galaxy",
+    cls=ComputationalWorkflow,
+)
+```
+
+The `mainEntity` property on the crate object provides convenient access to whichever workflow was registered as the primary entity:
+
+```python
+print(crate.mainEntity.id)  # "sort-and-change-case.ga"
+```
+
+## Adding Workflow Testing Metadata
+
+Workflow RO-Crates can embed testing metadata that describes how the workflow is tested, where tests run, and what test engine is used. This follows the [Workflow Testing RO-Crate](https://crs4.github.io/life_monitor/workflow_testing_ro_crate) extension.
+
+The three building blocks are **test suites**, **test instances**, and **test definitions**.
+
+<Steps>
+
+### Add a Test Suite
+
+A `TestSuite` groups together one or more test instances and a test definition for a workflow. If no `main_entity` is supplied, ro-crate-py automatically links the suite to the crate's `mainEntity`.
+
+```python
+suite = crate.add_test_suite(
+    identifier="#test1",
+    name="Test Suite 1",
+    main_entity=workflow,  # optional — defaults to crate.mainEntity
+)
+```
+
+### Add a Test Instance
+
+A `TestInstance` records where the tests actually run — the CI service URL and the path to the specific job within that service.
+
+```python
+instance = crate.add_test_instance(
+    suite,
+    url="http://example.com",
+    resource="jobs",
+    service="jenkins",       # "jenkins" | "travis" | "github"
+    identifier="#test1_1",
+)
+```
+
+Supported `service` values:
+
+- `"jenkins"` → Jenkins CI (`https://www.jenkins.io`)
+- `"travis"` → Travis CI (`https://www.travis-ci.com`)
+- `"github"` → GitHub Actions (`https://github.com`)
+
+### Add a Test Definition
+
+A `TestDefinition` points to the actual test file and records which test engine runs it, along with the required engine version.
+
+```python
+definition = crate.add_test_definition(
+    suite,
+    source="test/test1/sort-and-change-case-test.yml",
+    engine="planemo",        # currently "planemo" is the only built-in engine
+    engine_version=">=0.70",
+)
+```
+
+</Steps>
+
+<Tip>
+The `add_test_suite`, `add_test_instance`, and `add_test_definition` methods automatically inject the necessary extra JSON-LD terms (`TestSuite`, `TestInstance`, `TestService`, `PlanemoEngine`, etc.) from the `https://w3id.org/ro/terms/test` vocabulary into the crate's metadata context.
+</Tip>
+
+## Full Python Example
+
+The following end-to-end example packages a Galaxy workflow with a Planemo test suite:
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+
+# 1. Register the workflow as the crate's main entity
+workflow = crate.add_workflow(
+    source="sort-and-change-case.ga",
+    dest_path="sort-and-change-case.ga",
+    main=True,
+    lang="galaxy",
+    gen_cwl=True,  # requires rocrate[ga2cwl]
+)
+
+# 2. Create a test suite linked to the main workflow
+suite = crate.add_test_suite(identifier="#test1")
+
+# 3. Add a test instance running on Jenkins
+instance = crate.add_test_instance(
+    suite,
+    url="http://example.com",
+    resource="jobs",
+    service="jenkins",
+    identifier="#test1_1",
+)
+
+# 4. Add the Planemo test definition
+definition = crate.add_test_definition(
+    suite,
+    source="test/test1/sort-and-change-case-test.yml",
+    engine="planemo",
+    engine_version=">=0.70",
+)
+
+crate.write("workflow_crate")
+```
+
+## CLI Walkthrough
+
+ro-crate-py ships with a `rocrate` command-line tool. The following example shows a complete workflow from directory to Workflow RO-Crate using the CLI:
+
+```bash
+# Navigate into a directory that already contains a Galaxy workflow
+cd test/test-data/ro-crate-galaxy-sortchangecase
+
+# Remove any existing metadata to start fresh
+rm ro-crate-metadata.json
+
+# Step 1: Initialise — creates ro-crate-metadata.json listing all files
+rocrate init
+
+# Step 2: Register the workflow as a ComputationalWorkflow with Galaxy language
+rocrate add workflow -l galaxy sort-and-change-case.ga
+
+# Step 3: Add a test suite
+rocrate add test-suite -i '#test1'
+
+# Step 4: Add a test instance pointing to a Jenkins server
+rocrate add test-instance '#test1' http://example.com -r jobs -i '#test1_1'
+
+# Step 5: Add the Planemo test definition
+rocrate add test-definition '#test1' test/test1/sort-and-change-case-test.yml \
+    -e planemo -v '>=0.70'
+```
+
+After `rocrate add workflow`, the metadata entry for the workflow changes from a plain `File` to a `ComputationalWorkflow` with a `programmingLanguage` reference and becomes the crate's `mainEntity`:
+
+```json
+{
+  "@id": "sort-and-change-case.ga",
+  "@type": ["File", "SoftwareSourceCode", "ComputationalWorkflow"],
+  "name": "sort-and-change-case",
+  "programmingLanguage": {"@id": "https://w3id.org/workflowhub/workflow-ro-crate#galaxy"}
+}
+```
+
+The `rocrate add workflow` command accepts a `-l` / `--language` flag with the same choices available in the Python API:
+
+```
+-l, --language [cwl|galaxy|knime|nextflow|snakemake|compss|autosubmit]
+```

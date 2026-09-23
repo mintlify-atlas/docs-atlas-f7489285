@@ -1,0 +1,309 @@
+---
+title: "ComputationalWorkflow — Scientific Workflow Data Entity"
+sidebarTitle: "ComputationalWorkflow"
+description: "ComputationalWorkflow represents a scientific workflow file in an RO-Crate. Supports CWL, Galaxy, Nextflow, Snakemake, KNIME, and more."
+---
+
+The `ComputationalWorkflow` class extends `File` to represent a scientific workflow source file inside an RO-Crate. It carries a richer JSON-LD type list (`["File", "SoftwareSourceCode", "ComputationalWorkflow"]`), automatically derives a human-readable `name` from the filename, and links to a `ComputerLanguage` entity that describes the workflow's programming language. When a workflow is registered as the crate's main entity via `main=True`, ro-crate-py also adds the Workflow RO-Crate profile URI to the metadata's `conformsTo` list.
+
+## Creating a ComputationalWorkflow
+
+Use `ROCrate.add_workflow()` rather than instantiating `ComputationalWorkflow` directly. This factory method handles language entity creation, `mainEntity` assignment, and optional abstract CWL generation in a single call.
+
+```python
+workflow = crate.add_workflow(
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+    main=False,
+    lang="cwl",
+    lang_version=None,
+    gen_cwl=False,
+    cls=ComputationalWorkflow,
+    record_size=False,
+)
+```
+
+### Parameters
+
+<ParamField path="source" type="str | Path | None" default="None">
+  Path to the local workflow file, or a remote URL. Behaves identically to the `source` parameter on `File` — local files are copied on `write()`, remote URLs are referenced (or fetched when `fetch_remote=True`).
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None" default="None">
+  Relative path inside the crate. Defaults to the basename of `source`. Must be relative; absolute paths raise `ValueError`.
+</ParamField>
+
+<ParamField path="fetch_remote" type="bool" default="False">
+  When `True` and `source` is a URL, the workflow file is downloaded on `crate.write()`.
+</ParamField>
+
+<ParamField path="validate_url" type="bool" default="False">
+  When `True`, a `HEAD` request is issued during serialization to populate `contentSize` and `encodingFormat`.
+</ParamField>
+
+<ParamField path="properties" type="dict | None" default="None">
+  Extra JSON-LD properties to merge at creation time, for example `{"description": "Main analysis pipeline"}`.
+</ParamField>
+
+<ParamField path="main" type="bool" default="False">
+  When `True`, sets `crate.mainEntity` to this workflow and adds the Workflow RO-Crate profile URI (`WORKFLOW_PROFILE`) to the metadata's `conformsTo` list.
+</ParamField>
+
+<ParamField path="lang" type="str | ComputerLanguage" default='"cwl"'>
+  The workflow language. Pass one of the built-in language key strings (see the [supported languages table](#supported-languages) below) or a pre-built `ComputerLanguage` entity that already belongs to this crate. When a string is given, the corresponding `ComputerLanguage` entity is created and added automatically.
+</ParamField>
+
+<ParamField path="lang_version" type="str | None" default="None">
+  Optional version string for the language, e.g. `"1.2"` for CWL or `"22.10"` for Galaxy. Sets the `version` property on the `ComputerLanguage` entity and adjusts its `identifier` URL where applicable.
+</ParamField>
+
+<ParamField path="gen_cwl" type="bool" default="False">
+  When `True` and `lang` is `"galaxy"`, ro-crate-py generates an abstract CWL description using the `galaxy2cwl` package and registers it as a `WorkflowDescription` entity. The workflow's `subjectOf` property is then set to point at this CWL description. Requires the `rocrate[ga2cwl]` extra.
+</ParamField>
+
+<ParamField path="cls" type="type" default="ComputationalWorkflow">
+  The class to instantiate. Override with `WorkflowDescription` or the legacy `Workflow` subclass when importing existing crates that use those types.
+</ParamField>
+
+<ParamField path="record_size" type="bool" default="False">
+  When `True`, `contentSize` is recorded in the metadata after the file has been written or streamed.
+</ParamField>
+
+---
+
+## Default Type
+
+```python
+ComputationalWorkflow.TYPES = ["File", "SoftwareSourceCode", "ComputationalWorkflow"]
+```
+
+The `@type` list is set from the class-level `TYPES` attribute and written to the JSON-LD graph automatically by `_empty()`. You do not need to specify `@type` in `properties` unless you want to override it entirely.
+
+---
+
+## Properties
+
+### `programmingLanguage` / `lang` / `language`
+
+All three names are aliases for the same property — a reference to a `ComputerLanguage` contextual entity.
+
+```python
+wf = crate.add_workflow("pipeline.cwl", lang="cwl")
+print(wf.programmingLanguage)  # ComputerLanguage entity
+print(wf.lang)                 # same object
+print(wf.language)             # same object
+
+# Assign directly
+wf.programmingLanguage = some_language_entity
+```
+
+### `subjectOf`
+
+A reference to the abstract CWL `WorkflowDescription` entity associated with this workflow. Set automatically when `gen_cwl=True` is passed to `add_workflow()`, or assigned manually:
+
+```python
+wf.subjectOf = cwl_description_entity
+```
+
+### `name`
+
+Derived automatically from the filename (without extension) by `_empty()`:
+
+```python
+wf = crate.add_workflow("pipeline.nf", lang="nextflow")
+print(wf["name"])  # "pipeline"
+```
+
+Override it through `properties` or by direct assignment:
+
+```python
+wf["name"] = "RNA-seq Analysis Pipeline"
+```
+
+---
+
+## `crate.mainEntity`
+
+Setting `main=True` in `add_workflow()` assigns the workflow to `crate.mainEntity` (stored as `root_dataset["mainEntity"]`) and registers the Workflow RO-Crate profile in `conformsTo`:
+
+```python
+wf = crate.add_workflow("workflow.cwl", main=True, lang="cwl")
+print(crate.mainEntity is wf)  # True
+print(crate.metadata["conformsTo"])
+# includes {"@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"}
+```
+
+### `WORKFLOW_PROFILE` constant
+
+```python
+from rocrate.model.metadata import WORKFLOW_PROFILE
+
+print(WORKFLOW_PROFILE)
+# "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+```
+
+---
+
+## Supported Languages
+
+The following language keys are accepted as the `lang` argument to `add_workflow()`. Each maps to a pre-built `ComputerLanguage` entity with canonical identifiers taken from the [Workflow RO-Crate profile](https://w3id.org/workflowhub/workflow-ro-crate/1.0).
+
+| `lang` key | Full name | Profile `@id` |
+|---|---|---|
+| `"cwl"` | Common Workflow Language | `https://w3id.org/workflowhub/workflow-ro-crate#cwl` |
+| `"galaxy"` | Galaxy | `https://w3id.org/workflowhub/workflow-ro-crate#galaxy` |
+| `"knime"` | KNIME | `https://w3id.org/workflowhub/workflow-ro-crate#knime` |
+| `"nextflow"` | Nextflow | `https://w3id.org/workflowhub/workflow-ro-crate#nextflow` |
+| `"snakemake"` | Snakemake | `https://w3id.org/workflowhub/workflow-ro-crate#snakemake` |
+| `"compss"` | COMPSs Programming Model | `#compss` |
+| `"autosubmit"` | Autosubmit | `#autosubmit` |
+
+Passing an unrecognised string raises `ValueError: Unknown language: <name>`.
+
+---
+
+## Usage Examples
+
+### CWL workflow as main entity
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+wf = crate.add_workflow(
+    "analysis.cwl",
+    main=True,
+    lang="cwl",
+    lang_version="1.2",
+)
+print(wf.id)                        # "analysis.cwl"
+print(wf["name"])                   # "analysis"
+print(wf.programmingLanguage.name)  # "Common Workflow Language"
+print(crate.mainEntity is wf)       # True
+```
+
+### Nextflow workflow
+
+```python
+wf = crate.add_workflow(
+    "pipeline.nf",
+    main=True,
+    lang="nextflow",
+    lang_version="23.04",
+    properties={"description": "Variant calling pipeline"},
+)
+```
+
+### Galaxy workflow with abstract CWL generation
+
+```python
+# Requires: pip install rocrate[ga2cwl]
+wf = crate.add_workflow(
+    "galaxy_workflow.ga",
+    main=True,
+    lang="galaxy",
+    gen_cwl=True,
+)
+# wf.subjectOf is now a WorkflowDescription entity pointing to galaxy_workflow.cwl
+print(wf.subjectOf.id)  # "galaxy_workflow.cwl"
+print(wf.subjectOf.TYPES)  # ["File", "SoftwareSourceCode", "HowTo"]
+```
+
+### Pre-built ComputerLanguage entity
+
+```python
+from rocrate.model.computerlanguage import nextflow as make_nextflow
+
+lang = make_nextflow(crate, version="23.04")
+crate.add(lang)
+
+wf = crate.add_workflow("pipeline.nf", main=True, lang=lang)
+```
+
+### Write the workflow crate to disk
+
+```python
+crate.write("/tmp/workflow-crate")
+# Creates /tmp/workflow-crate/
+#   ro-crate-metadata.json   (includes mainEntity, conformsTo WORKFLOW_PROFILE)
+#   analysis.cwl
+```
+
+---
+
+## Subclasses
+
+### `WorkflowDescription`
+
+Represents an **abstract CWL description** of a workflow. Its type list is `["File", "SoftwareSourceCode", "HowTo"]`. Created automatically by `add_workflow(gen_cwl=True)` for Galaxy workflows, or registered manually using `cls=WorkflowDescription`:
+
+```python
+from rocrate.model.computationalworkflow import WorkflowDescription
+
+cwl_desc = crate.add_workflow(
+    "abstract.cwl",
+    lang="cwl",
+    cls=WorkflowDescription,
+)
+print(cwl_desc.TYPES)  # ["File", "SoftwareSourceCode", "HowTo"]
+```
+
+### `Workflow` (legacy)
+
+The older type `["File", "SoftwareSourceCode", "Workflow"]` used in RO-Crate profiles prior to the introduction of `ComputationalWorkflow`. It is preserved for reading existing crates:
+
+```python
+from rocrate.model.computationalworkflow import Workflow
+
+# Reading an older crate that uses the Workflow type
+wf = crate.get("workflow.cwl")
+print(type(wf))        # <class 'rocrate.model.computationalworkflow.Workflow'>
+print(wf.TYPES)        # ["File", "SoftwareSourceCode", "Workflow"]
+```
+
+---
+
+## `galaxy_to_abstract_cwl` Utility
+
+```python
+from rocrate.model.computationalworkflow import galaxy_to_abstract_cwl
+
+cwl_path = galaxy_to_abstract_cwl(workflow_path, delete=True)
+```
+
+Converts a Galaxy `.ga` workflow file to an abstract CWL representation by invoking the `galaxy2cwl` package. Returns the path to a temporary `.cwl` file.
+
+<ParamField path="workflow_path" type="str | Path">
+  Path to the Galaxy workflow `.ga` file.
+</ParamField>
+
+<ParamField path="delete" type="bool" default="True">
+  When `True`, the temporary CWL file is deleted automatically when the Python process exits (via `atexit`). Set to `False` to retain the file for inspection.
+</ParamField>
+
+<Warning>
+  `galaxy_to_abstract_cwl` requires the `ga2cwl` optional dependency. Install it with:
+
+  ```bash
+  pip install rocrate[ga2cwl]
+  ```
+
+  If `galaxy2cwl` is not installed, calling this function raises `RuntimeError: conversion to cwl not available`.
+</Warning>
+
+---
+
+## Class Hierarchy
+
+```
+Entity
+└── DataEntity
+    └── FileOrDir
+        └── File
+            └── ComputationalWorkflow          # ["File", "SoftwareSourceCode", "ComputationalWorkflow"]
+                ├── WorkflowDescription        # ["File", "SoftwareSourceCode", "HowTo"]
+                └── Workflow  (legacy)         # ["File", "SoftwareSourceCode", "Workflow"]
+```

@@ -1,0 +1,164 @@
+---
+title: "Working with Detached RO-Crates (RO-Crate 1.2)"
+sidebarTitle: "Detached Crates"
+description: "Detached RO-Crates have no root directory — metadata is accessed independently via API or standalone file. Introduced in RO-Crate 1.2."
+---
+
+[RO-Crate 1.2](https://www.researchobject.org/ro-crate/whats-changed-in-1-2) introduces the concept of **detached** RO-Crates: crates that have no defined root directory on disk. Instead of describing a payload of files bundled inside a single directory, the metadata is accessed independently — from a standalone metadata file, an API response, or a remote URI. Traditional crates that bundle files in a root directory are called **attached** crates.
+
+## Attached vs Detached
+
+| | Attached | Detached |
+|---|---|---|
+| Root directory | Required — contains all payload files | None — no directory context |
+| Root dataset `@id` | `"./"` (default) or an absolute URI | Must be an absolute URI |
+| Data entity `@id` | Relative path or absolute URI | **Must** be an absolute URI |
+| Metadata file name | `ro-crate-metadata.json` | `${prefix}-ro-crate-metadata.json` (recommended) |
+| Written via | `crate.write(path)` | `crate.write_detached(path)` |
+
+<Info>
+Both attached and attached crates support an absolute URI as the root dataset `@id`. The distinction is whether the crate describes a directory payload or stands alone as a pure metadata object.
+</Info>
+
+## Creating a Detached Crate
+
+Pass the absolute URI of the root dataset as `root_dataset_id` when constructing the crate:
+
+```python
+from rocrate.rocrate import ROCrate
+
+url = "http://example.com/crate/"
+crate = ROCrate(root_dataset_id=url)
+```
+
+Because there is no local directory to resolve relative paths against, **every data entity must have an absolute URI as its `@id`**:
+
+```python
+# Correct — absolute URI
+file_1 = crate.add_file(f"{url}file_1")  # @id: "http://example.com/crate/file_1"
+
+# Adding a relative path in a detached crate is not meaningful —
+# always use the fully-qualified URI.
+```
+
+<Warning>
+In a detached crate all data entities must have absolute URIs as their `@id`. Attempting to add files with relative paths produces undefined behaviour because there is no root directory to resolve them against.
+</Warning>
+
+## Writing a Detached Crate
+
+The [recommended naming convention](https://www.researchobject.org/ro-crate/specification/1.2/structure.html#types-of-ro-crate) for a detached metadata file is:
+
+```
+${prefix}-ro-crate-metadata.json
+```
+
+where `${prefix}` is any meaningful identifier. Use `crate.write_detached` to serialise the metadata to an arbitrary path:
+
+```python
+crate.write_detached("/tmp/example-ro-crate-metadata.json")
+```
+
+<Warning>
+If the path you pass to `write_detached` does not match the pattern `*-ro-crate-metadata.json`, a `UserWarning` is issued at runtime. The file is still written, but consuming tools may not recognise it as a detached crate.
+</Warning>
+
+The output is a single JSON-LD metadata file — no directory tree is created.
+
+## Reading a Detached Crate
+
+ro-crate-py supports four ways to consume a detached crate.
+
+### From a Local File Path
+
+Pass the path to the metadata file directly to `ROCrate`:
+
+```python
+read_crate = ROCrate("/tmp/example-ro-crate-metadata.json")
+read_file_1 = read_crate.dereference(f"{url}file_1")
+```
+
+### From a `file://` URI
+
+A local `file://` URI works identically:
+
+```python
+read_crate = ROCrate("file:///tmp/example-ro-crate-metadata.json")
+```
+
+### From a Remote URI
+
+Pass an `https://` URI to load the metadata directly over the network:
+
+```python
+base = "https://raw.githubusercontent.com/ResearchObject/ro-crate-py/master/test/test-data/"
+read_crate = ROCrate(f"{base}detached-ro-crate-metadata.json")
+
+assert read_crate.root_dataset.id == base
+
+sample_file = read_crate.dereference(f"{base}sample_file.txt")
+test_file_galaxy = read_crate.dereference(f"{base}test_file_galaxy.txt")
+```
+
+### From a JSON-LD Dictionary
+
+You can also pass a Python dictionary containing the parsed JSON-LD directly to `ROCrate`. This is useful when you have obtained the metadata from an API endpoint or any other programmatic source:
+
+```python
+import json
+from rocrate.rocrate import ROCrate
+
+with open("/tmp/example-ro-crate-metadata.json") as f:
+    metadata = json.load(f)
+
+crate = ROCrate(metadata)
+```
+
+<Tip>
+The dictionary approach is particularly useful for consuming RO-Crate metadata served by a REST API without having to write the payload to a temporary file first.
+</Tip>
+
+## Full Round-Trip Example
+
+The following example creates a small detached crate, writes it to disk, and reads it back:
+
+```python
+import json
+from rocrate.rocrate import ROCrate
+
+# --- Create ---
+url = "http://example.com/crate/"
+crate = ROCrate(root_dataset_id=url)
+crate.add_file(f"{url}file_1")
+crate.add_file(f"{url}file_2")
+
+# Write a single metadata file — no directory is created
+crate.write_detached("/tmp/example-ro-crate-metadata.json")
+
+# --- Consume from file path ---
+read_crate = ROCrate("/tmp/example-ro-crate-metadata.json")
+f1 = read_crate.dereference(f"{url}file_1")
+print(f1.id)  # "http://example.com/crate/file_1"
+
+# --- Consume from dict ---
+with open("/tmp/example-ro-crate-metadata.json") as fh:
+    metadata = json.load(fh)
+dict_crate = ROCrate(metadata)
+f2 = dict_crate.dereference(f"{url}file_2")
+print(f2.id)  # "http://example.com/crate/file_2"
+```
+
+## Naming Convention Reference
+
+The pattern checked by ro-crate-py is:
+
+```
+.*-ro-crate-metadata.json
+```
+
+Some valid examples:
+
+- `example-ro-crate-metadata.json` ✅
+- `my-dataset-ro-crate-metadata.json` ✅
+- `ro-crate-metadata.json` ❌ (this is the attached crate filename, not the detached pattern)
+- `metadata.json` ❌ (no `-ro-crate-metadata.json` suffix)

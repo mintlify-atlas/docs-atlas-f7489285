@@ -1,0 +1,249 @@
+---
+title: "Dataset Entity — Data Entity for Directory Resources"
+sidebarTitle: "Dataset"
+description: "The Dataset class represents a directory in an RO-Crate. Use add_dataset for simple directories or add_tree for recursive hasPart linking."
+---
+
+The `Dataset` class represents a directory (folder) data entity in an RO-Crate. It sits in the class hierarchy as `Dataset → FileOrDir → DataEntity → Entity` and handles directory creation, optional recursive file population, and remote folder streaming. Every directory you register in a crate — whether a local path, a remote URL, or a placeholder with no source — is represented by a `Dataset` instance. The crate's own root directory is represented by the special `RootDataset` subclass, whose `@id` is always `"./"`.
+
+## Creating a Dataset Entity
+
+Use `ROCrate.add_dataset()` (also aliased as `add_directory()`) to register a directory, or `ROCrate.add_tree()` to register a directory and recursively link all its contents via `hasPart`.
+
+```python
+# Register a directory without recursing into its contents
+dataset = crate.add_dataset(
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+)
+
+# Register a directory AND recursively add all files/subdirectories
+dataset = crate.add_tree(
+    source,
+    dest_path=None,
+    properties=None,
+)
+
+# add_directory is an exact alias for add_dataset
+dataset = crate.add_directory(source, dest_path="results/")
+```
+
+### Parameters
+
+<ParamField path="source" type="str | Path | None" default="None">
+  The origin directory. Accepted values:
+
+  - **Local path** (`str` or `pathlib.Path`) — the directory is created (and, in CREATE mode, unlisted files are copied) at `base_path / dest_path` on `write()`.
+  - **Remote URL** — the URL is used as the `@id`. With `fetch_remote=True`, each file listed in the entity's `hasPart` is downloaded.
+  - **`None`** — creates an empty directory entry in metadata. An empty directory is created on disk during `write()`.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None" default="None">
+  Relative path inside the crate. Must be **relative**; absolute paths raise `ValueError`. The `@id` is always normalised to end with `/` by `format_id()`. When omitted, defaults to the basename of `source`.
+</ParamField>
+
+<ParamField path="fetch_remote" type="bool" default="False">
+  When `True` and `source` is a URL, each file referenced in `hasPart` is downloaded during `write()` or `stream()`.
+</ParamField>
+
+<ParamField path="validate_url" type="bool" default="False">
+  When `True` and `source` is a URL, the URL is opened once to verify it is reachable and to set `sdDatePublished` on the entity.
+</ParamField>
+
+<ParamField path="properties" type="dict | None" default="None">
+  Extra JSON-LD properties to merge into the entity. For example: `{"description": "Output files", "license": {"@id": "https://spdx.org/licenses/MIT"}}`.
+</ParamField>
+
+---
+
+## Entity Identity (`@id`)
+
+Dataset identifiers **always end with `/`**, enforced by the internal `format_id()` method which appends a trailing slash if one is missing. This matches the RO-Crate specification requirement that directory `@id` values are slash-terminated.
+
+```python
+ds = crate.add_dataset(source="results", dest_path="results")
+print(ds.id)  # "results/"
+
+ds2 = crate.add_dataset(dest_path="outputs/")
+print(ds2.id)  # "outputs/"
+```
+
+<Note>
+  Always pass `dest_path` with a trailing `/` or let `format_id` add it for you. Passing a path without a trailing slash is safe — it will be normalised automatically.
+</Note>
+
+---
+
+## `add_dataset` vs `add_tree`
+
+| Method | Registers entity | Adds child `File` entities | Populates `hasPart` |
+|---|---|---|---|
+| `add_dataset` / `add_directory` | ✅ | ❌ | ❌ |
+| `add_tree` | ✅ | ✅ (recursive) | ✅ (recursive) |
+
+Use `add_dataset` when you only need to declare a directory's existence in the metadata without enumerating its contents. Use `add_tree` when every file inside the directory should also be registered and linked via `hasPart`.
+
+```python
+# add_dataset: directory registered, files NOT listed individually
+output_dir = crate.add_dataset("results/", dest_path="results/")
+
+# add_tree: directory + all nested files registered, hasPart populated
+output_dir = crate.add_tree("results/", dest_path="results/")
+for part in output_dir["hasPart"]:
+    print(part.id)  # prints each file/subdirectory id
+```
+
+---
+
+## The `hasPart` Property
+
+`hasPart` is a JSON-LD list property that links a `Dataset` to the entities it contains. `add_tree` populates it automatically; you can also build it manually:
+
+```python
+ds = crate.add_dataset(dest_path="data/")
+f1 = crate.add_file("data/input.csv", dest_path="data/input.csv")
+f2 = crate.add_file("data/output.csv", dest_path="data/output.csv")
+ds.append_to("hasPart", [f1, f2])
+```
+
+For remote datasets, `write()` and `stream()` iterate over `hasPart` and download each URL-based entry:
+
+```python
+remote_ds = crate.add_dataset(
+    "https://example.org/remote-dir/",
+    fetch_remote=True,
+    properties={
+        "hasPart": [
+            {"@id": "https://example.org/remote-dir/file-a.csv"},
+            {"@id": "https://example.org/remote-dir/file-b.csv"},
+        ]
+    },
+)
+crate.write("/tmp/my-crate")  # downloads both files
+```
+
+---
+
+## Usage Examples
+
+### Simple local directory
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+data_dir = crate.add_dataset("data/", dest_path="data/")
+print(data_dir.id)  # "data/"
+```
+
+### Recursive tree registration
+
+```python
+crate = ROCrate()
+results = crate.add_tree(
+    "results/",
+    dest_path="results/",
+    properties={"description": "Analysis outputs"},
+)
+# results["hasPart"] is now populated with all files and subdirectories
+```
+
+### Placeholder directory (no source)
+
+```python
+# Creates an empty directory in the crate without a local source
+logs = crate.add_dataset(dest_path="logs/")
+print(logs.id)   # "logs/"
+# When crate.write() is called, an empty "logs/" directory is created
+```
+
+### Remote dataset with fetch
+
+```python
+remote = crate.add_dataset(
+    "https://data.example.org/archive/",
+    fetch_remote=True,
+    dest_path="archive/",
+)
+```
+
+---
+
+## Methods
+
+### `write(base_path)`
+
+Creates the directory (and copies contents in CREATE mode) under `base_path`.
+
+```python
+def write(self, base_path: str | Path) -> None
+```
+
+| Source type | `fetch_remote` | Action |
+|---|---|---|
+| Local path | — | Creates `base_path / id`; copies unlisted files (CREATE mode only) |
+| URL | `False` | Opens URL to verify it (if `validate_url=True`), sets `sdDatePublished` |
+| URL | `True` | Downloads each `hasPart` URL entry into `base_path / dest_path` |
+| `None` | — | Creates an empty directory at `base_path / id` |
+
+<Warning>
+  `write()` is called automatically by `crate.write()` and `crate.write_zip()`. Call it directly only when implementing custom serialization.
+</Warning>
+
+### `stream(chunk_size=8192)`
+
+Yields `(relative_path, bytes)` pairs for all files contained in the directory, suitable for ZIP streaming.
+
+```python
+def stream(self, chunk_size: int = 8192) -> Generator[tuple[str, bytes], None, None]
+```
+
+For local sources in CREATE mode, all files are walked recursively. For remote sources with `fetch_remote=True`, each `hasPart` URL entry is streamed.
+
+---
+
+## Special Subclasses
+
+### `RootDataset`
+
+The `RootDataset` subclass represents the crate's own root directory. Its `@id` is always `"./"` and it is created automatically when you call `ROCrate()`. You interact with it through the `crate.root_dataset` attribute and top-level crate properties such as `crate.name`, `crate.license`, and `crate.mainEntity`.
+
+```python
+crate = ROCrate()
+print(crate.root_dataset.id)        # "./"
+print(crate.root_dataset["@type"])  # "Dataset"
+
+crate.name = "My Crate"
+crate.license = {"@id": "https://spdx.org/licenses/MIT"}
+```
+
+`RootDataset` also carries the `datePublished` field (set to the current UTC time on creation) and is the anchor for `hasPart` — all data entities registered with `crate.add(entity)` are automatically appended to the root's `hasPart`.
+
+### `Subcrate`
+
+`Subcrate` is a `Dataset` subclass that represents a nested RO-Crate embedded within a parent crate. It adds a `conformsTo` declaration in its `_empty()` definition and supports lazy loading of the inner crate via `get_crate()`. Use `crate.add_subcrate()` to register one.
+
+```python
+inner = crate.add_subcrate("nested-crate/", dest_path="nested-crate/")
+inner_rocrate = inner.get_crate()  # loads the nested RO-Crate on first access
+```
+
+<Tip>
+  For a full walkthrough of nested crate patterns, see the [Subcrates guide](/guides/subcrates).
+</Tip>
+
+---
+
+## Class Hierarchy
+
+```
+Entity
+└── DataEntity
+    └── FileOrDir
+        └── Dataset
+            ├── RootDataset    # the "./" root entity
+            └── Subcrate       # nested RO-Crate entity
+```

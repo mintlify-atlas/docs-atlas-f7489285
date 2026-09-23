@@ -1,0 +1,303 @@
+---
+title: "Creating RO-Crates with ro-crate-py"
+sidebarTitle: "Creating Crates"
+description: "Learn how to create RO-Crates programmatically — add files, datasets, and contextual entities, then write to disk or stream as ZIP."
+---
+
+ro-crate-py lets you build a Research Object Crate entirely in Python: create an empty `ROCrate`, add local or remote files and directories, describe relationships between entities with contextual metadata, then persist the result as a directory tree or a ZIP archive. This guide walks through every step from instantiation to serialization.
+
+## Instantiating a new crate
+
+Start by importing `ROCrate` and calling its constructor with no arguments. This produces an empty crate that already contains the two mandatory special entities — the root dataset (`./`) and the metadata file descriptor (`ro-crate-metadata.json`).
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+```
+
+<Note>
+  By default the crate conforms to **RO-Crate 1.2**. Pass `version="1.1"` or `version="1.0"` to target an older specification version. The `version` parameter is ignored when loading an existing crate — the version is read from the metadata descriptor instead.
+</Note>
+
+```python
+crate_1_1 = ROCrate(version="1.1")
+print(crate_1_1.version)   # "1.1"
+print(crate_1_1.metadata.id)  # "ro-crate-metadata.jsonld"
+```
+
+## Adding files
+
+Use `crate.add_file(source, dest_path, properties)` to register a local file as a `File` data entity.
+
+```python
+paper = crate.add_file("exp/paper.pdf", properties={
+    "name": "manuscript",
+    "encodingFormat": "application/pdf"
+})
+
+table = crate.add_file("exp/results.csv", properties={
+    "name": "experimental data",
+    "encodingFormat": "text/csv"
+})
+
+diagram = crate.add_file(
+    "exp/diagram.svg",
+    dest_path="images/figure.svg",
+    properties={
+        "name": "bar chart",
+        "encodingFormat": "image/svg+xml"
+    }
+)
+```
+
+<CardGroup cols={2}>
+  <Card title="dest_path omitted" icon="file">
+    When `dest_path` is not supplied, the destination path is set to the **basename** of the source file. `exp/paper.pdf` becomes `paper.pdf` at the crate root.
+  </Card>
+  <Card title="dest_path supplied" icon="folder-tree">
+    Supply `dest_path` to control the relative path inside the crate. `dest_path="images/figure.svg"` places the file under an `images/` subdirectory.
+  </Card>
+</CardGroup>
+
+## Adding datasets (directories)
+
+A directory is represented as a `Dataset` entity. `crate.add_dataset` copies the directory contents into the crate when it is written, but only registers the **top-level** directory in the metadata — individual files inside are not listed separately.
+
+```python
+logs = crate.add_dataset("exp/logs")
+```
+
+<Tip>
+  Use `add_dataset` when you want a lightweight metadata entry for a directory and don't need individual file entries. The entire directory tree is still copied to disk on `crate.write()`.
+</Tip>
+
+### Recursive metadata with `add_tree`
+
+If you want every file and sub-directory within a directory to appear in the metadata — each linked via `hasPart` — use `add_tree` instead:
+
+```python
+logs = crate.add_tree("exp/logs")
+```
+
+`add_tree` walks the source directory, calls `add_file` or `add_tree` for each entry, and wires up `hasPart` relationships automatically. It only works on **local** directory trees.
+
+## Adding contextual entities
+
+Contextual entities describe non-digital things such as people, organizations, or events. The library ships with a `Person` class; all contextual entity classes inherit from `ContextEntity`.
+
+```python
+from rocrate.model.person import Person
+
+alice_id = "https://orcid.org/0000-0000-0000-0000"
+bob_id   = "https://orcid.org/0000-0000-0000-0001"
+
+alice = crate.add(Person(crate, alice_id, properties={
+    "name": "Alice Doe",
+    "affiliation": "University of Flatland"
+}))
+bob = crate.add(Person(crate, bob_id, properties={
+    "name": "Bob Doe",
+    "affiliation": "University of Flatland"
+}))
+```
+
+## Setting properties on entities
+
+Link entities together by assigning Python objects directly to property keys. The library stores JSON-LD `{"@id": ...}` references internally and resolves them back to entity objects on read.
+
+```python
+paper["author"] = [alice, bob]
+table["author"] = alice
+diagram["author"] = bob
+```
+
+### Why `append_to` is needed
+
+Entities store their **JSON-LD representation** internally, not Python lists. When you access `paper["author"]`, the library generates a new list on the fly by dereferencing the stored `{"@id": ...}` references. Calling `.append()` on that transient list has no effect on the stored data.
+
+Use `entity.append_to(key, value)` to safely add a value to an existing property:
+
+```python
+from rocrate.model.person import Person
+
+donald = crate.add(Person(crate, "https://en.wikipedia.org/wiki/Donald_Duck", properties={
+    "name": "Donald Duck"
+}))
+paper.append_to("author", donald)
+```
+
+`append_to` also works when the property does not yet exist or currently holds only a single value:
+
+```python
+for name in ("Mickey_Mouse", "Scrooge_McDuck"):
+    p = crate.add(Person(crate, f"https://en.wikipedia.org/wiki/{name}"))
+    donald.append_to("follows", p)
+```
+
+## Adding remote files
+
+Pass an HTTP/HTTPS URL as the `source` to register a remote file. By default the file is only **referenced** in the metadata — it will not be downloaded.
+
+```python
+input_data = crate.add_file("http://example.org/exp_data.zip")
+```
+
+<CardGroup cols={2}>
+  <Card title="fetch_remote=True" icon="download">
+    The library downloads the file and bundles it in the output crate when `crate.write()` is called.
+  </Card>
+  <Card title="validate_url=True" icon="circle-check">
+    The library sends a `HEAD` request to populate `contentSize` and `encodingFormat` metadata — without downloading the full content.
+  </Card>
+</CardGroup>
+
+```python
+# Download and include the file in the written crate
+remote = crate.add_file(
+    "http://example.org/exp_data.zip",
+    fetch_remote=True,
+    validate_url=True
+)
+```
+
+## Adding entities with arbitrary types
+
+Only a subset of RO-Crate types have dedicated Python classes. For any other type listed in the [RO-Crate context](https://www.researchobject.org/ro-crate/1.1/context.jsonld), pass `@type` explicitly through the `properties` argument to `ContextEntity`:
+
+```python
+from rocrate.model.contextentity import ContextEntity
+
+hackathon = crate.add(ContextEntity(crate, "#bh2021", properties={
+    "@type": "Hackathon",
+    "name": "Biohackathon 2021",
+    "location": "Barcelona, Spain",
+    "startDate": "2021-11-08",
+    "endDate": "2021-11-12"
+}))
+```
+
+Entities can carry **multiple types** — supply a list:
+
+```python
+workflow = crate.add_file("sort.ga", properties={
+    "@type": ["File", "SoftwareSourceCode"]
+})
+```
+
+## Selecting the specification version
+
+```python
+crate_legacy = ROCrate(version="1.0")
+print(crate_legacy.version)      # "1.0"
+print(crate_legacy.metadata.id)  # "ro-crate-metadata.jsonld"
+
+crate_current = ROCrate()
+print(crate_current.version)     # "1.2"
+print(crate_current.metadata.id) # "ro-crate-metadata.json"
+```
+
+<Warning>
+  The `version` parameter only affects **newly created** crates. When loading an existing crate the version is read from the `conformsTo` field of the metadata descriptor and the `version` argument is silently ignored.
+</Warning>
+
+## Writing to disk
+
+`crate.write(path)` creates the target directory (including parents) and copies all registered files into it alongside the generated `ro-crate-metadata.json`.
+
+```python
+crate.write("exp_crate")
+```
+
+The resulting layout mirrors the `dest_path` values assigned to each entity:
+
+```text
+exp_crate/
+|-- images/
+|   └── figure.svg
+|-- logs/
+|   |-- log1.txt
+|   └── log2.txt
+|-- paper.pdf
+|-- results.csv
+└── ro-crate-metadata.json
+```
+
+## Writing as a ZIP archive
+
+`crate.write_zip(path)` produces a single ZIP file understood by many tools and repositories:
+
+```python
+crate.write_zip("exp_crate.zip")
+```
+
+## Streaming as a ZIP
+
+`crate.stream_zip()` returns a **generator** that yields raw bytes. No temporary file is written to disk. This is ideal for web APIs that need to push a crate to a client on demand.
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from rocrate.rocrate import ROCrate
+from io import StringIO
+
+app = FastAPI()
+
+@app.get("/crate")
+async def get():
+    crate = ROCrate()
+
+    # Add a remote file — fetched on-the-fly during streaming
+    crate.add_file(
+        "https://raw.githubusercontent.com/ResearchObject/ro-crate-py/refs/heads/master/test/test-data/sample_file.txt",
+        fetch_remote=True
+    )
+
+    # Add an in-memory string as a file
+    crate.add_file(
+        source=StringIO("Hello, World!"),
+        dest_path="test-data/hello.txt"
+    )
+
+    return StreamingResponse(
+        crate.stream_zip(),
+        media_type="application/rocrate+zip",
+        headers={
+            "Content-Disposition": "attachment; filename=crate.zip",
+        }
+    )
+```
+
+<Tip>
+  `stream_zip` is the only serialization method that does not require a writable filesystem on the server. Remote files added with `fetch_remote=True` are fetched and piped directly into the ZIP stream.
+</Tip>
+
+## Generating an HTML preview
+
+Pass `gen_preview=True` to the constructor to include a human-readable `ro-crate-preview.html` file in the output:
+
+```python
+crate = ROCrate(gen_preview=True)
+crate.add_file("exp/paper.pdf", properties={"name": "manuscript"})
+crate.write("exp_crate")
+# exp_crate/ro-crate-preview.html is now included
+```
+
+<Note>
+  The HTML preview is generated from the crate metadata and provides a convenient way to inspect crate contents in a browser without tooling.
+</Note>
+
+## Handling special characters in paths
+
+RO-Crate identifiers are URIs, so special characters in file paths are **percent-encoded** automatically by the library when you add local files:
+
+```python
+crate = ROCrate()
+d = crate.add_dataset("read_crate/a b")
+print(d.id)  # 'a%20b/'
+
+f = crate.add_file("read_crate/a b/c d.txt", dest_path="data/a b/c d.txt")
+print(f.id)  # 'data/a%20b/c%20d.txt'
+```
+
+When the identifier is an absolute URI (e.g. an HTTPS URL or an ORCID), you are responsible for providing a valid, already-encoded URI.

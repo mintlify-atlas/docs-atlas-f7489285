@@ -1,0 +1,203 @@
+---
+title: "Nested RO-Crates: Working with Subcrates"
+sidebarTitle: "Subcrates"
+description: "Embed one RO-Crate inside another using subcrates. Learn how to create, load, and traverse nested crate hierarchies in ro-crate-py."
+---
+
+An RO-Crate can contain one or more **subcrates** — fully self-contained RO-Crates nested inside a parent crate's directory tree. Each subcrate has its own `ro-crate-metadata.json` and can itself contain further nested crates, forming an arbitrarily deep hierarchy. ro-crate-py handles loading, traversal, and writing of these nested structures through the `Subcrate` class and the `load_subcrates` parameter.
+
+## How Subcrates Are Identified
+
+The presence of a nested crate is indicated in the JSON-LD metadata by a `Dataset` entity whose `conformsTo` property points to the generic RO-Crate profile URI `https://w3id.org/ro/crate`:
+
+```json
+{
+    "@id": "subcrate/",
+    "@type": "Dataset",
+    "conformsTo": "https://w3id.org/ro/crate"
+}
+```
+
+ro-crate-py represents such entities with the `Subcrate` class, which extends `Dataset`. A `Subcrate` always carries `conformsTo: "https://w3id.org/ro/crate"` in its `_empty` representation and exposes a `get_crate()` method that returns the nested `ROCrate` instance.
+
+## Directory Layout
+
+A crate with multiple nested levels might look like this on disk:
+
+```
+crate_with_subcrates/
+|-- file.txt
+|-- ro-crate-metadata.json
+|-- subcrate/
+|   |-- ro-crate-metadata.json
+|   |-- subfile.txt
+|   `-- subsubcrate/
+|       |-- deepfile.txt
+|       `-- ro-crate-metadata.json
+`-- subcrate2/
+    |-- ro-crate-metadata.json
+    `-- subfile.txt
+```
+
+## Consuming Subcrates
+
+### Loading with `load_subcrates=True`
+
+Because subcrates may contain many or large files, they are **not loaded by default**. Pass `load_subcrates=True` to opt in:
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate("test/test-data/crate_with_subcrates", load_subcrates=True)
+```
+
+### Listing Subcrate Entities
+
+After loading, the `subcrate_entities` property returns all direct child subcrates as a list of `Subcrate` objects:
+
+```pycon
+>>> crate.subcrate_entities
+[<subcrate/ Dataset>, <subcrate2/ Dataset>]
+```
+
+### Lazy Loading
+
+Even with `load_subcrates=True`, the nested `ROCrate` object for each subcrate is **not instantiated until you access it**. Calling `subcrate_entity.get_crate()` triggers the load on first access:
+
+```pycon
+>>> subcrate = crate.subcrate_entities[0]   # no IO yet
+>>> nested_crate = subcrate.get_crate()     # nested crate is loaded here
+>>> nested_crate.data_entities
+[<subfile.txt File>, <subsubcrate/ Dataset>]
+>>> nested_crate.subcrate_entities
+[<subsubcrate/ Dataset>]
+```
+
+<Note>
+`load_subcrates=True` propagates recursively: when `get_crate()` loads a nested crate, it passes `load_subcrates=True` to the `ROCrate` constructor so that deeper subcrates remain available for lazy loading as well.
+</Note>
+
+### Cross-Subcrate Dereference
+
+`crate.dereference` can resolve entity IDs that live inside subcrates. When the requested ID begins with a known subcrate ID, ro-crate-py automatically loads that subcrate and resolves the entity within it:
+
+```pycon
+>>> crate.dereference("subcrate2/subfile.txt")
+<subfile.txt File>
+```
+
+This works for any depth in the hierarchy — you do not need to manually call `get_crate()` first.
+
+## Creating Subcrates
+
+### Adding a Subcrate
+
+Use `crate.add_subcrate(dest_path=...)` to create a new nested crate within an existing `ROCrate`:
+
+```pycon
+>>> crate = ROCrate()
+>>> crate.add_file("test/test-data/test_file_galaxy.txt")
+<test_file_galaxy.txt File>
+>>> subcrate = crate.add_subcrate(dest_path="subcrate/")
+>>> subcrate
+<subcrate/ Dataset>
+>>> assert subcrate.get("conformsTo") == "https://w3id.org/ro/crate"
+>>> assert crate.subcrate_entities == [subcrate]
+```
+
+`add_subcrate` returns a `Subcrate` entity with `conformsTo` set to `https://w3id.org/ro/crate`.
+
+### Accessing the Nested ROCrate Object
+
+Call `get_crate()` on the `Subcrate` entity to obtain the inner `ROCrate` instance, then use it like any other crate:
+
+```pycon
+>>> subcrate_crate = subcrate.get_crate()
+>>> subcrate_crate
+<rocrate.rocrate.ROCrate object at 0x7e4b79adfad0>
+```
+
+### Building a Nested Hierarchy
+
+You can nest subcrates inside subcrates to arbitrary depth. The following example builds a three-level hierarchy:
+
+```pycon
+>>> crate = ROCrate()
+
+# Level 1 — top-level crate gets a subcrate
+>>> subcrate = crate.add_subcrate(dest_path="subcrate/")
+>>> subcrate_crate = subcrate.get_crate()
+
+# Level 2 — subcrate gets a sub-subcrate
+>>> subsubcrate = subcrate_crate.add_subcrate(dest_path="subsubcrate/")
+>>> assert subcrate_crate.subcrate_entities == [subsubcrate]
+
+# Level 3 — add a file inside the sub-subcrate
+>>> subsubcrate_crate = subsubcrate.get_crate()
+>>> subsubf = subsubcrate_crate.add_file("setup.cfg")
+
+# Cross-level dereference works from the top
+>>> assert crate.dereference("subcrate/subsubcrate/setup.cfg") is subsubf
+```
+
+### Writing — Cascades Automatically
+
+A single call to `crate.write` serialises the entire hierarchy. Each `Subcrate`'s `write` method delegates to `get_crate().write(...)` pointed at the correct subdirectory, so all nested `ro-crate-metadata.json` files are produced automatically:
+
+```python
+crate.write("/tmp/crate_with_subcrates")
+```
+
+The resulting directory tree mirrors the nesting defined in the crate:
+
+```
+/tmp/crate_with_subcrates/
+|-- ro-crate-metadata.json
+`-- subcrate/
+    |-- ro-crate-metadata.json
+    `-- subsubcrate/
+        |-- ro-crate-metadata.json
+        `-- setup.cfg
+```
+
+<Tip>
+You only ever call `write` on the outermost crate. ro-crate-py automatically cascades the write down through all levels of nested subcrates.
+</Tip>
+
+## The `Subcrate` Class
+
+`Subcrate` is a subclass of `Dataset` defined in `rocrate.rocrate`. Its key characteristics are:
+
+- **`_empty` representation** includes `"conformsTo": "https://w3id.org/ro/crate"` by default.
+- **`get_crate()`** returns the nested `ROCrate`, loading it lazily on first call.
+- **`write(base_path)`** calls `super().write(base_path)` to copy any source files, then delegates to `get_crate().write(base_path / unquote(self.id))` to serialise the nested crate when operating in `CREATE` mode.
+
+```python
+# Checking conformsTo after creation
+subcrate = crate.add_subcrate(dest_path="results/")
+assert subcrate.get("conformsTo") == "https://w3id.org/ro/crate"
+assert subcrate.id == "results/"
+```
+
+## Summary
+
+<CardGroup cols={2}>
+  <Card title="Load subcrates" icon="folder-open">
+    Pass `load_subcrates=True` to `ROCrate(path, load_subcrates=True)` to enable subcrate discovery.
+  </Card>
+  <Card title="List subcrates" icon="list">
+    Use `crate.subcrate_entities` to get all direct child `Subcrate` objects.
+  </Card>
+  <Card title="Access nested crate" icon="arrow-down">
+    Call `subcrate_entity.get_crate()` to obtain the lazily-loaded inner `ROCrate`.
+  </Card>
+  <Card title="Dereference across crates" icon="link">
+    Use `crate.dereference("subcrate/file.txt")` to resolve entities inside nested crates.
+  </Card>
+  <Card title="Create subcrates" icon="plus">
+    Use `crate.add_subcrate(dest_path="subcrate/")` to embed a new nested crate.
+  </Card>
+  <Card title="Write all levels" icon="floppy-disk">
+    A single `crate.write(path)` cascades to write all nested subcrate metadata files.
+  </Card>
+</CardGroup>

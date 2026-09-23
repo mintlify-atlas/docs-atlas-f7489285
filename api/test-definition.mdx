@@ -1,0 +1,318 @@
+---
+title: "TestDefinition — Workflow Test Definition File Entity"
+sidebarTitle: "TestDefinition"
+description: "TestDefinition is a File entity referencing a test specification file and its execution engine, linked to a TestSuite in the crate."
+---
+
+`TestDefinition` extends `File` to represent the test specification file for a workflow — for example, a Planemo test YAML. It carries two additional properties: `conformsTo` (aliased as `engine`), which points to a `SoftwareApplication` entity identifying the execution engine, and `engineVersion`, a version constraint string. When created via `crate.add_test_definition()`, the definition is automatically assigned to `suite.definition` and the `TESTING_EXTRA_TERMS` vocabulary is merged into the crate metadata.
+
+## Class hierarchy
+
+```
+File
+└── TestDefinition
+```
+
+`TestDefinition` extends `File` and carries the JSON-LD type `["File", "TestDefinition"]`, where `TestDefinition` resolves to `https://w3id.org/ro/terms/test#TestDefinition`.
+
+---
+
+## Creating a TestDefinition
+
+### Via `ROCrate.add_test_definition()` (recommended)
+
+```python
+definition = crate.add_test_definition(
+    suite,
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+    engine="planemo",
+    engine_version=None,
+    record_size=False,
+)
+```
+
+`add_test_definition` constructs and registers a `TestDefinition` file entity, resolves (or creates) the `SoftwareApplication` engine entity, sets `definition.engine` and `definition.engineVersion`, assigns the definition to `suite.definition`, and merges `TESTING_EXTRA_TERMS` into the metadata context.
+
+<ParamField path="suite" type="TestSuite | str" required>
+  The parent `TestSuite` object, or its string ID (e.g. `"#test1"`). The crate
+  must already contain a suite with that ID.
+</ParamField>
+
+<ParamField path="source" type="str | Path" optional>
+  Path to the test specification file on disk. Used as the file source when
+  writing the crate.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path" optional>
+  Relative path inside the crate where the file will be placed. When omitted,
+  derived from `source`.
+</ParamField>
+
+<ParamField path="fetch_remote" type="bool" default="False">
+  If `True`, fetch the file from a remote URL when writing.
+</ParamField>
+
+<ParamField path="validate_url" type="bool" default="False">
+  If `True`, validate that a remote URL is reachable when the entity is
+  created.
+</ParamField>
+
+<ParamField path="properties" type="dict" optional>
+  Additional JSON-LD properties to set at creation time.
+</ParamField>
+
+<ParamField path="engine" type='str | SoftwareApplication' default='"planemo"'>
+  The test execution engine. Pass the built-in name string `"planemo"` and the
+  corresponding `SoftwareApplication` entity is created and added to the crate
+  automatically. Alternatively, pass an existing `SoftwareApplication` instance
+  already registered in this crate.
+</ParamField>
+
+<ParamField path="engine_version" type="str" optional>
+  Version constraint string for the engine, e.g. `">=0.70"`. Stored as
+  `engineVersion` in the JSON-LD graph. When `None`, the property is omitted.
+</ParamField>
+
+<ParamField path="record_size" type="bool" default="False">
+  If `True`, record the file size in the entity metadata.
+</ParamField>
+
+**Returns** a `TestDefinition` instance.
+
+### Direct construction (low-level)
+
+```python
+from rocrate.model.testdefinition import TestDefinition
+from rocrate.model.softwareapplication import SoftwareApplication, PLANEMO_ID
+
+engine = SoftwareApplication(crate, identifier=PLANEMO_ID, properties={
+    "name": "Planemo",
+    "url": {"@id": "https://github.com/galaxyproject/planemo"},
+})
+crate.add(engine)
+
+definition = TestDefinition(
+    crate,
+    source="test/test1/sort-and-change-case-test.yml",
+    dest_path="test/test1/sort-and-change-case-test.yml",
+)
+crate.add(definition)
+definition.engine = engine          # sets conformsTo
+definition.engineVersion = ">=0.70"
+
+suite.definition = definition
+```
+
+<Warning>
+  Direct construction bypasses the automatic `TESTING_EXTRA_TERMS` injection
+  and engine lookup. Prefer `crate.add_test_definition()` unless you need
+  fine-grained control over entity construction.
+</Warning>
+
+---
+
+## Properties
+
+### `conformsTo` / `engine`
+
+<ResponseField name="conformsTo" type="SoftwareApplication | None">
+  The execution engine entity. `engine` is a module-level alias that reads from
+  and writes to the same `"conformsTo"` JSON-LD property.
+
+  ```python
+  print(definition.conformsTo.name)  # "Planemo"
+  print(definition.engine.name)      # "Planemo"  (same object)
+
+  # Both names can be used to reassign
+  definition.engine = my_engine
+  assert definition.conformsTo is my_engine
+  ```
+</ResponseField>
+
+### `engineVersion`
+
+<ResponseField name="engineVersion" type="str | None">
+  Version constraint string for the test engine. Defined as
+  `https://w3id.org/ro/terms/test#engineVersion`.
+
+  ```python
+  definition.engineVersion = ">=0.70"
+  print(definition.engineVersion)  # ">=0.70"
+  ```
+</ResponseField>
+
+---
+
+## SoftwareApplication entities
+
+`SoftwareApplication` (extends `ContextEntity` and `CreativeWork`) identifies the test execution engine. One canonical singleton is defined in `rocrate.model.softwareapplication`:
+
+| Name string | Canonical IRI | Notes |
+|-------------|--------------|-------|
+| `"planemo"` | `https://w3id.org/ro/terms/test#PlanemoEngine` | Galaxy workflow test runner |
+
+Each `SoftwareApplication` entity exposes `name`, `url`, and `version` properties.
+
+### `APP_MAP` and `get_app()`
+
+```python
+from rocrate.model.softwareapplication import APP_MAP, get_app
+
+# APP_MAP maps name strings to factory functions
+# {"planemo": <func>}
+
+app = get_app(crate, "planemo")
+# Returns a SoftwareApplication(crate, identifier=PLANEMO_ID, properties={...})
+```
+
+<ParamField path="crate" type="ROCrate" required>
+  The crate the application entity will belong to.
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  One of the supported engine names (currently only `"planemo"`,
+  case-insensitive). Raises `ValueError` for unknown names.
+</ParamField>
+
+### `SoftwareApplication` properties
+
+<ResponseField name="name" type="str | None">
+  Display name of the application, e.g. `"Planemo"`.
+</ResponseField>
+
+<ResponseField name="url" type="str | None">
+  Canonical website or repository URL of the engine.
+</ResponseField>
+
+<ResponseField name="version" type="str | None">
+  Version of the application (distinct from `engineVersion`, which is a
+  constraint on the `TestDefinition` itself).
+</ResponseField>
+
+---
+
+## `TESTING_EXTRA_TERMS`
+
+All `add_test_*` helpers inject the following dictionary into `crate.metadata.extra_terms`, which causes ro-terms vocabulary entries to be appended to the JSON-LD `@context`:
+
+```python
+from rocrate.model.metadata import TESTING_EXTRA_TERMS
+
+TESTING_EXTRA_TERMS = {
+    "TestSuite":      "https://w3id.org/ro/terms/test#TestSuite",
+    "TestInstance":   "https://w3id.org/ro/terms/test#TestInstance",
+    "TestService":    "https://w3id.org/ro/terms/test#TestService",
+    "TestDefinition": "https://w3id.org/ro/terms/test#TestDefinition",
+    "PlanemoEngine":  "https://w3id.org/ro/terms/test#PlanemoEngine",
+    "JenkinsService": "https://w3id.org/ro/terms/test#JenkinsService",
+    "TravisService":  "https://w3id.org/ro/terms/test#TravisService",
+    "GithubService":  "https://w3id.org/ro/terms/test#GithubService",
+    "instance":       "https://w3id.org/ro/terms/test#instance",
+    "runsOn":         "https://w3id.org/ro/terms/test#runsOn",
+    "resource":       "https://w3id.org/ro/terms/test#resource",
+    "definition":     "https://w3id.org/ro/terms/test#definition",
+    "engineVersion":  "https://w3id.org/ro/terms/test#engineVersion",
+}
+```
+
+<Info>
+  These terms are sourced from the
+  [ro-terms test namespace](https://github.com/ResearchObject/ro-terms/tree/master/test)
+  and are required for the generated `ro-crate-metadata.json` to be valid
+  against the Workflow Testing RO-Crate profile.
+</Info>
+
+---
+
+## CLI equivalent
+
+```bash
+rocrate add test-definition '#test1' test/test1/sort-and-change-case-test.yml \
+    -e planemo \
+    -v '>=0.70'
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `suite` (positional) | ID of the parent `TestSuite`, e.g. `'#test1'` |
+| `path` (positional) | Path to the test file, must be inside the crate directory |
+| `-e` / `--engine` | Engine name: `planemo` (default: `planemo`) |
+| `-v` / `--engine-version` | Version constraint string, e.g. `'>=0.70'` |
+| `-c` / `--crate-dir` | Path to the crate root (default: `.`) |
+| `-P` / `--property` | Extra `KEY=VALUE` property, repeatable |
+
+---
+
+## End-to-end example
+
+The following example creates a crate from scratch, registers a Galaxy workflow, then wires up a complete testing graph with a suite, a Jenkins instance, and a Planemo definition.
+
+```python
+from rocrate.rocrate import ROCrate
+
+# 1. Initialise the crate
+crate = ROCrate()
+
+# 2. Add the workflow as the crate's main entity
+wf = crate.add_workflow(
+    "sort-and-change-case.ga",
+    main=True,
+    lang="galaxy",
+)
+
+# 3. Create a test suite linked to the workflow
+suite = crate.add_test_suite(
+    identifier="#test1",
+    name="Sort & Change Case Tests",
+)
+# suite["mainEntity"] is automatically set to wf
+assert suite["mainEntity"] is wf
+
+# 4. Add a CI instance running on Jenkins
+instance = crate.add_test_instance(
+    suite,
+    url="http://ci.example.org",
+    resource="job/tests/",
+    service="jenkins",
+    identifier="#test1_1",
+    name="Test 1 – Jenkins",
+)
+print(instance.service.name)  # "Jenkins"
+
+# 5. Add the Planemo test definition file
+definition = crate.add_test_definition(
+    suite,
+    source="test/test1/sort-and-change-case-test.yml",
+    dest_path="test/test1/sort-and-change-case-test.yml",
+    engine="planemo",
+    engine_version=">=0.70",
+)
+print(definition.engine.name)      # "Planemo"
+print(definition.engineVersion)    # ">=0.70"
+
+# 6. Verify the complete graph
+assert suite.instance[0] is instance
+assert suite.definition is definition
+assert suite in crate.test_suites
+
+# 7. Write the crate to disk
+crate.write("my-workflow-crate")
+# Produces my-workflow-crate/ro-crate-metadata.json with ro-terms context
+```
+
+<Tip>
+  The CLI commands map directly to steps 3–5 above and are useful for adding
+  testing metadata to an existing crate on disk without writing any Python:
+
+  ```bash
+  rocrate add test-suite -i '#test1' -n 'Sort & Change Case Tests'
+  rocrate add test-instance '#test1' http://ci.example.org -r job/tests/ -s jenkins -i '#test1_1'
+  rocrate add test-definition '#test1' test/test1/sort-and-change-case-test.yml -e planemo -v '>=0.70'
+  ```
+</Tip>

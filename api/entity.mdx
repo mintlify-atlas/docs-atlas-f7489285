@@ -1,0 +1,325 @@
+---
+title: "Entity Base Class — Property Access and Manipulation"
+sidebarTitle: "Entity"
+description: "The Entity base class underpins all ro-crate-py objects. It provides dict-like property access, JSON-LD serialization, and entity linking."
+---
+
+`Entity` is the abstract base class for every object in an RO-Crate, from raw files to people to test suites. It implements Python's `MutableMapping` interface so that JSON-LD properties can be read and written using familiar dictionary syntax. When you access a property whose value is a `{"@id": "..."}` reference, `Entity` automatically dereferences it to the live entity in the crate — and when you assign an `Entity` instance as a value it is automatically serialised back to a reference.
+
+## Class Hierarchy
+
+The class tree below shows how `Entity` is specialised for different kinds of crate objects:
+
+```
+Entity (MutableMapping)
+├── DataEntity
+│   └── FileOrDir
+│       ├── File
+│       │   ├── Metadata
+│       │   ├── TestDefinition
+│       │   └── ComputationalWorkflow / WorkflowDescription
+│       └── Dataset
+│           └── RootDataset
+└── ContextEntity
+    ├── Person
+    ├── ComputerLanguage
+    ├── SoftwareApplication
+    ├── TestSuite
+    ├── TestInstance
+    └── TestService
+```
+
+Most application code works with concrete subclasses, but all of the behaviour described here is available on every object in the crate.
+
+## Constructor
+
+```python
+from rocrate.model import Entity
+
+entity = Entity(crate, identifier="#my-entity", properties={"name": "Example"})
+```
+
+<ParamField path="crate" type="ROCrate">
+  The parent crate. Available as `entity.crate` after construction.
+</ParamField>
+
+<ParamField path="identifier" type="str | None" default="None">
+  The JSON-LD `@id` for this entity. When omitted a random UUID-based
+  fragment ID is generated (`#<uuid4>`). The value is normalised by
+  `format_id` — for example, `Dataset` appends a trailing `/`.
+</ParamField>
+
+<ParamField path="properties" type="dict | None" default="None">
+  Initial JSON-LD properties. Keys starting with `@` are stored verbatim;
+  all others go through `__setitem__` so `Entity` instances in values are
+  automatically converted to `{"@id": "..."}` references.
+</ParamField>
+
+---
+
+## Core Properties
+
+<ResponseField name="id" type="str">
+  The entity's `@id` string, as stored in the JSON-LD. Read-only — the ID is
+  fixed at construction time.
+
+  ```python
+  print(entity.id)  # e.g. "paper.pdf" or "#alice"
+  ```
+</ResponseField>
+
+<ResponseField name="type" type="str | list[str]">
+  The entity's `@type` value, read directly from the underlying JSON-LD dict.
+  May be a single string or a list when the entity has multiple types.
+
+  ```python
+  print(entity.type)  # "Person" or ["File", "ComputationalWorkflow"]
+  ```
+</ResponseField>
+
+---
+
+## Identity Methods
+
+### `canonical_id`
+
+```python
+entity.canonical_id()
+```
+
+Return the fully-qualified arcp URI for this entity. Relative IDs are resolved against the parent crate's `arcp_base_uri`. This is the key used internally to register and look up entities in the crate.
+
+<ResponseField name="return" type="str">
+  The arcp URI, e.g.
+  `"arcp://uuid,3fa85f64-5717-4562-b3fc-2c963f66afa6/paper.pdf"`.
+</ResponseField>
+
+```python
+crate.resolve_id("paper.pdf") == entity.canonical_id()  # True
+```
+
+---
+
+## Dict-like Property Access
+
+`Entity` implements the full `MutableMapping` interface. The mapping keys correspond to JSON-LD property names (excluding `@id` and `@type`, which are managed separately).
+
+### Reading a property
+
+```python
+value = entity["name"]
+```
+
+When the raw stored value is a `{"@id": "..."}` reference, `__getitem__` automatically dereferences it to the live `Entity` from the crate. If the referenced entity is not found, the raw `@id` string is returned as a fallback.
+
+```python
+# Returns the Person entity, not just {"@id": "#alice"}
+author = paper["author"]
+print(author.id)     # "#alice"
+print(author["name"])  # "Alice"
+```
+
+### Writing a property
+
+```python
+entity["key"] = value
+```
+
+When `value` is an `Entity` instance it is serialised as `{"@id": entity.id}`. When `value` is a list, each element is processed individually. Keys starting with `@` cannot be set via `__setitem__` and raise `KeyError`.
+
+```python
+entity["author"] = person_entity    # stored as {"@id": "#alice"}
+entity["keywords"] = ["genomics", "RNA-seq"]
+```
+
+### Deleting a property
+
+```python
+del entity["key"]
+```
+
+Removes the key from the underlying JSON-LD dict. Raises `KeyError` if the key starts with `@` or does not exist.
+
+### Checking membership
+
+```python
+"name" in entity   # True if the "name" key is present
+```
+
+### `get` (via MutableMapping)
+
+```python
+entity.get("name", default=None)
+```
+
+Return the value for `key`, or `default` if the key is absent. Dereferences references exactly as `__getitem__` does.
+
+---
+
+## List Manipulation
+
+### `append_to`
+
+```python
+entity.append_to(key, value, compact=False)
+```
+
+Append one or more values to a property without clobbering an existing list. If the property does not yet exist it is initialised to an empty list before appending. Useful for building `hasPart`, `input`, `mentions`, and similar list-valued properties incrementally.
+
+<ParamField path="key" type="str">
+  The property name. Cannot start with `@`.
+</ParamField>
+
+<ParamField path="value" type="Any | list[Any]">
+  A single value or list of values to append. `Entity` instances are converted
+  to `{"@id": ...}` references.
+</ParamField>
+
+<ParamField path="compact" type="bool" default="False">
+  When `True` and the resulting list has exactly one element, the list is
+  collapsed to a scalar.
+</ParamField>
+
+```python
+dataset.append_to("hasPart", file_entity)
+dataset.append_to("hasPart", [file2, file3])
+```
+
+---
+
+## Serialisation
+
+### `properties` / `as_jsonld`
+
+```python
+entity.properties()   # returns the raw JSON-LD dict
+entity.as_jsonld()    # identical alias
+```
+
+Return the entity's underlying `_jsonld` dict directly — no dereferencing, no copying. The dict includes `@id` and `@type` alongside all user-set properties.
+
+<ResponseField name="return" type="dict">
+  The raw JSON-LD property dict.
+</ResponseField>
+
+<Note>
+  The returned dict is a **live reference** to the entity's internal state.
+  Mutating it directly bypasses `Entity`'s type-conversion logic. Prefer the
+  dict-access API (`entity["key"] = value`) for normal writes.
+</Note>
+
+---
+
+## Typed Properties
+
+### `datePublished`
+
+```python
+entity.datePublished          # getter
+entity.datePublished = value  # setter
+```
+
+A typed property that reads the stored ISO 8601 string and returns a `datetime` object (via `dateutil.parser.isoparse`). The setter accepts either a `datetime` (calls `.isoformat()` automatically) or a raw string.
+
+```python
+from datetime import datetime
+
+entity.datePublished = datetime(2024, 6, 1)
+print(entity.datePublished)  # datetime(2024, 6, 1, 0, 0)
+print(entity["datePublished"])  # "2024-06-01T00:00:00" (raw string)
+```
+
+---
+
+## Convenience Methods
+
+### `delete`
+
+```python
+entity.delete()
+```
+
+Remove this entity from its parent crate. Equivalent to calling `crate.delete(entity)`.
+
+<Warning>
+  Deleting an entity does not update other entities that reference it. Check
+  and clean up any referencing properties manually.
+</Warning>
+
+---
+
+## String Representation
+
+```python
+repr(entity)  # "<#alice Person>"
+```
+
+The default `__repr__` format is `<{id} {type}>`. For entities with multiple types, `type` is a list, which is included as-is.
+
+---
+
+## Practical Examples
+
+### Creating and registering a contextual entity
+
+```python
+from rocrate.rocrate import ROCrate
+from rocrate.model import ContextEntity
+
+crate = ROCrate()
+
+# Create a Person entity
+person = crate.add(ContextEntity(
+    crate,
+    "#alice",
+    properties={
+        "@type": "Person",
+        "name": "Alice Researcher",
+        "email": "alice@example.org",
+    }
+))
+
+# Assign as the crate's creator
+crate.creator = person
+print(crate.root_dataset["creator"])  # the Person entity (auto-dereferenced)
+```
+
+### Navigating entity links
+
+```python
+# Add a file and assign it a license (another entity)
+license_entity = crate.add(ContextEntity(
+    crate,
+    "https://spdx.org/licenses/Apache-2.0",
+    {"@type": "CreativeWork", "name": "Apache 2.0"},
+))
+
+paper = crate.add_file("paper.pdf", properties={"name": "Research paper"})
+paper["license"] = license_entity
+
+# Auto-dereferencing on read
+retrieved_license = paper["license"]
+print(type(retrieved_license))   # <class 'rocrate.model.contextentity.ContextEntity'>
+print(retrieved_license["name"]) # "Apache 2.0"
+```
+
+### Building a hasPart list incrementally
+
+```python
+dataset = crate.add_dataset("results/")
+
+for filename in ["a.txt", "b.txt", "c.txt"]:
+    f = crate.add_file(f"results/{filename}")
+    dataset.append_to("hasPart", f)
+
+print(len(dataset["hasPart"]))  # 3
+```
+
+### Iterating entity properties
+
+```python
+# MutableMapping gives you keys(), values(), items()
+for key, value in workflow.items():
+    if not key.startswith("@"):
+        print(f"{key}: {value}")
+```

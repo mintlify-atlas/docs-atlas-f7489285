@@ -1,0 +1,126 @@
+---
+title: "Install ro-crate-py in Your Python Project"
+sidebarTitle: "Installation"
+description: "Install ro-crate-py via pip with Python 3.9 or later. Supports optional Galaxy-to-CWL conversion and development installs from source."
+---
+
+ro-crate-py is distributed on [PyPI](https://pypi.org/project/rocrate/) as the `rocrate` package and can be installed with a standard `pip` command. The library requires **Python 3.9 or later**. Choose the installation path that matches your use case below: a regular pip install for most users, an extras install if you need Galaxy-to-CWL support, or a development install if you want to work from the latest source.
+
+## Requirements
+
+- Python **3.9** or later
+- `pip` (included with all modern Python distributions)
+
+<Tip>
+  Using a [virtual environment](https://docs.python.org/3/library/venv.html) (`python -m venv .venv`) is strongly recommended to keep your project's dependencies isolated.
+</Tip>
+
+## Standard Installation
+
+<Steps>
+  <Step title="Install the rocrate package">
+    Run the following command in your terminal to install the latest stable release from PyPI:
+
+    ```bash
+    pip install rocrate
+    ```
+  </Step>
+
+  <Step title="Verify the installation">
+    Confirm that the package installed correctly and check the version:
+
+    ```python
+    import rocrate
+    print(rocrate.__version__)
+    # e.g. 0.15.1
+    ```
+
+    You can also run this as a one-liner from the terminal:
+
+    ```bash
+    python -c "import rocrate; print(rocrate.__version__)"
+    ```
+  </Step>
+</Steps>
+
+## Optional: Galaxy-to-CWL Support
+
+If you need to convert [Galaxy](https://galaxyproject.org/) workflow files (`.ga`) to abstract CWL representations during crate construction, install the `ga2cwl` optional extra:
+
+```bash
+pip install rocrate[ga2cwl]
+```
+
+<Note>
+  The `ga2cwl` extra pulls in additional dependencies for workflow conversion. If you only create or read standard RO-Crates you do not need it.
+</Note>
+
+## Development Install from Source
+
+If you want to contribute to ro-crate-py, test an unreleased feature, or track the `main` branch, install directly from the GitHub repository:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/ResearchObject/ro-crate-py
+    ```
+  </Step>
+
+  <Step title="Enter the project directory">
+    ```bash
+    cd ro-crate-py
+    ```
+  </Step>
+
+  <Step title="Install in editable mode">
+    Installing with `pip install .` copies the package into your environment. For an editable install where changes to the source are immediately reflected without reinstalling, use the `-e` flag:
+
+    ```bash
+    pip install .
+    ```
+
+    Or, for an editable (development) install:
+
+    ```bash
+    pip install -e .
+    ```
+  </Step>
+
+  <Step title="Verify the installation">
+    ```python
+    import rocrate
+    print(rocrate.__version__)
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Development installs may include unreleased changes that have not yet been fully tested. For production use, prefer the stable release from PyPI.
+</Warning>
+
+## What Gets Installed
+
+A successful install makes the following available in your environment:
+
+| Component | Description |
+|-----------|-------------|
+| `rocrate` Python package | The core library — `ROCrate`, `File`, `Dataset`, `Person`, etc. |
+| `rocrate` CLI command | The `rocrate init`, `rocrate add`, and `rocrate write-zip` subcommands |
+
+You can confirm the CLI is on your `PATH`:
+
+```bash
+rocrate --help
+```
+
+```
+Usage: rocrate [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  add
+  init
+  write-zip
+```

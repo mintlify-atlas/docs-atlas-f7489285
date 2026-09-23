@@ -1,0 +1,252 @@
+---
+title: "Working with RO-Crate Entities"
+sidebarTitle: "Entities"
+description: "Understand ro-crate-py's entity model — data entities, contextual entities, property access, JSON-LD operations, and the entity class hierarchy."
+---
+
+Every object tracked inside an RO-Crate — a file, a dataset, a person, an event — is represented by an entity object. ro-crate-py maps each entity to a Python class, exposes a dict-like property API backed by JSON-LD storage, and provides crate-level helpers for adding, updating, and removing entities in bulk. This guide explains the class hierarchy, the property model, and all JSON-LD operations available on the `ROCrate` object.
+
+## Entity class hierarchy
+
+All entity classes ultimately inherit from `Entity`, which implements `MutableMapping` so that every entity behaves like a Python dictionary over its JSON-LD properties.
+
+```text
+Entity (MutableMapping)
+├── DataEntity
+│   └── FileOrDir
+│       ├── File
+│       └── Dataset
+│           └── Subcrate       # nested RO-Crate
+└── ContextEntity
+    ├── Person
+    ├── ComputerLanguage
+    ├── SoftwareApplication
+    ├── ComputationalWorkflow
+    ├── CreativeWork
+    ├── Metadata               # special — the metadata file descriptor
+    ├── RootDataset            # special — the crate itself
+    └── Preview                # special — the HTML preview file
+```
+
+<CardGroup cols={2}>
+  <Card title="Data entities" icon="database">
+    `File` and `Dataset` represent digital objects that exist (or will exist) inside the crate directory. They carry a `source` path and a `write` method used during serialization.
+  </Card>
+  <Card title="Contextual entities" icon="tag">
+    `ContextEntity` and its subclasses describe non-digital things — people, organizations, events, software, languages. They have no `write` method and are serialized only to the metadata JSON.
+  </Card>
+</CardGroup>
+
+## Dict-like property access
+
+Because `Entity` implements `MutableMapping`, you can read, write, and delete any metadata property using standard Python dict syntax.
+
+```python
+# Read — raises KeyError if absent
+name = entity["name"]
+
+# Safer read — returns None if absent
+enc = entity.get("encodingFormat")
+
+# Write / update
+entity["name"] = "Updated title"
+
+# Delete
+del entity["encodingFormat"]
+
+# Membership test
+if "author" in entity:
+    print("has author")
+```
+
+<Warning>
+  Keys starting with `@` (such as `@id` and `@type`) cannot be set or deleted through the dict interface. Attempting to do so raises a `KeyError`.
+</Warning>
+
+When a stored value is a JSON-LD reference `{"@id": "..."}`, the `__getitem__` method automatically resolves it to the corresponding entity object in the crate. Multi-valued JSON arrays become Python lists; single values are returned unwrapped.
+
+## Why `append_to` is needed
+
+Entities store their data as a **JSON-LD dict**, not as live Python objects:
+
+```python
+paper.properties()
+```
+
+```json
+{
+  "@id": "paper.pdf",
+  "@type": "File",
+  "name": "manuscript",
+  "encodingFormat": "application/pdf",
+  "author": [
+    {"@id": "https://orcid.org/0000-0000-0000-0000"},
+    {"@id": "https://orcid.org/0000-0000-0000-0001"}
+  ]
+}
+```
+
+When you access `paper["author"]`, the library generates a **new list on the fly** by dereferencing each `{"@id": ...}`. Calling `.append()` on that transient list has no effect on the stored data. Use `entity.append_to(key, value)` instead:
+
+```python
+donald = crate.add(Person(crate, "https://en.wikipedia.org/wiki/Donald_Duck", properties={
+    "name": "Donald Duck"
+}))
+
+# ✅ Correct — modifies the underlying JSON-LD
+paper.append_to("author", donald)
+
+# ❌ Silent no-op — mutates a throw-away list
+paper["author"].append(donald)
+```
+
+`append_to` works whether the property is missing, holds a single value, or already holds a list:
+
+```python
+for n in ("Mickey_Mouse", "Scrooge_McDuck"):
+    p = crate.add(Person(crate, f"https://en.wikipedia.org/wiki/{n}"))
+    donald.append_to("follows", p)
+```
+
+## `entity.properties()` — the raw JSON-LD dict
+
+`entity.properties()` (aliased as `entity.as_jsonld()`) returns the raw JSON-LD dictionary that backs the entity. This is useful for debugging and for exporting metadata without going through the full crate serialization:
+
+```python
+import json
+print(json.dumps(paper.properties(), indent=2))
+```
+
+## `entity.type` and `entity.id`
+
+```python
+entity.id    # the @id string, e.g. "paper.pdf" or "https://orcid.org/..."
+entity.type  # the @type value — a string or list of strings
+```
+
+```python
+for e in crate.get_entities():
+    print(e.id, e.type)
+```
+
+Entities with multiple types carry a list in `entity.type`:
+
+```python
+wf = crate.add_file("sort.ga", properties={"@type": ["File", "SoftwareSourceCode"]})
+print(wf.type)  # ['File', 'SoftwareSourceCode']
+```
+
+## Typed property: `entity.datePublished`
+
+`datePublished` is a typed property that automatically converts between ISO 8601 strings (stored in JSON-LD) and Python `datetime` objects:
+
+```python
+from datetime import datetime, timezone
+
+crate.root_dataset.datePublished = datetime(2024, 6, 1, tzinfo=timezone.utc)
+# stored as "2024-06-01T00:00:00+00:00"
+
+d = crate.root_dataset.datePublished
+print(type(d))   # <class 'datetime.datetime'>
+```
+
+## Deleting an entity
+
+Call `entity.delete()` to remove the entity from its crate, or use the crate-level `crate.delete(*entities)`:
+
+```python
+# Via the entity itself
+old_entity.delete()
+
+# Via the crate — accepts entity objects or @id strings
+crate.delete(old_entity, "images/figure.svg")
+```
+
+<Warning>
+  Deleting an entity does **not** update other entities that reference it. The crate may be left in an inconsistent state if references are not cleaned up manually.
+</Warning>
+
+The root dataset and the metadata descriptor cannot be deleted:
+
+```python
+crate.delete(crate.root_dataset)  # raises ValueError
+crate.delete(crate.metadata)      # raises ValueError
+```
+
+## Adding/updating via JSON-LD dictionaries
+
+Three crate-level methods let you modify the entity graph using plain JSON-LD dictionaries — useful when applying patches or ingesting external metadata.
+
+<Steps>
+  <Step title="add_jsonld — add a new entity">
+    Requires `@id` and `@type`. Raises `ValueError` if the entity already exists.
+
+    ```python
+    crate.add_jsonld({
+        "@id": "https://orcid.org/0000-0000-0000-0000",
+        "@type": "Person",
+        "name": "Alice Doe"
+    })
+    ```
+  </Step>
+  <Step title="update_jsonld — update an existing entity">
+    Requires `@id`; the `@type` and other `@`-prefixed keys are ignored. Raises `ValueError` if the entity does not exist.
+
+    ```python
+    crate.update_jsonld({
+        "@id": "https://orcid.org/0000-0000-0000-0000",
+        "name": "Alice K. Doe"
+    })
+    ```
+  </Step>
+  <Step title="add_or_update_jsonld — upsert semantics">
+    Adds the entity if it does not exist; updates it if it does. Ideal for applying a JSON-LD patch file:
+
+    ```python
+    import json
+
+    with open("patch.json") as f:
+        json_data = json.load(f)
+
+    crate = ROCrate("temp-crate")
+    for d in json_data.get("@graph", []):
+        crate.add_or_update_jsonld(d)
+    ```
+  </Step>
+</Steps>
+
+## Special entities
+
+Three entity types are always managed directly by the `ROCrate` object and exposed as named attributes:
+
+<CardGroup cols={3}>
+  <Card title="RootDataset" icon="circle-dot">
+    Represents the crate itself (`@id: "./"`, `@type: "Dataset"`). Accessed as `crate.root_dataset`. Convenience properties like `crate.name`, `crate.license`, and `crate.description` are aliases for properties on this entity.
+  </Card>
+  <Card title="Metadata" icon="file-lines">
+    Represents the metadata file descriptor. Accessed as `crate.metadata`. Carries the `conformsTo` reference that determines the crate's specification version (`crate.metadata.version`).
+  </Card>
+  <Card title="Preview" icon="eye">
+    An optional `ro-crate-preview.html` file. Created when `gen_preview=True` is passed to the constructor. Accessed as `crate.preview` (may be `None`).
+  </Card>
+</CardGroup>
+
+## Handling percent-encoding in identifiers
+
+RO-Crate identifiers are URIs, so special characters in file paths must be percent-encoded. ro-crate-py performs this encoding **automatically** for local file system paths:
+
+```python
+crate = ROCrate()
+
+d = crate.add_dataset("read_crate/a b")
+print(d.id)  # 'a%20b/'
+
+f = crate.add_file("read_crate/a b/c d.txt", dest_path="data/a b/c d.txt")
+print(f.id)  # 'data/a%20b/c%20d.txt'
+```
+
+When the identifier is an **absolute URI** (e.g. an ORCID, an HTTPS URL), you are responsible for supplying a valid, already-encoded URI — the library does not re-encode absolute identifiers.
+
+<Info>
+  `crate.dereference()` always resolves identifiers against an internal ARCP base URI, so you can dereference both relative identifiers (e.g. `"paper.pdf"`) and absolute URIs (e.g. `"https://orcid.org/..."`) with the same method call.
+</Info>

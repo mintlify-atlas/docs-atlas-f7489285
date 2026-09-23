@@ -1,0 +1,235 @@
+---
+title: "TestSuite — Workflow Testing Suite Entity"
+sidebarTitle: "TestSuite"
+description: "TestSuite groups test instances and a test definition for a workflow in an RO-Crate. Created via crate.add_test_suite() or the CLI."
+---
+
+`TestSuite` is a context entity that groups one or more `TestInstance` objects and a single `TestDefinition` under a named testing suite for a workflow. When you call `crate.add_test_suite()`, the suite is automatically appended to the root dataset's `mentions` property (or `about` when no main entity is available), and all required JSON-LD vocabulary terms from the `ro-terms` test namespace are injected into the metadata's `@context`. You can inspect every suite registered in a crate through the `crate.test_suites` property.
+
+## Class hierarchy
+
+```
+ContextEntity
+└── TestSuite
+```
+
+`TestSuite` extends `ContextEntity` and carries the JSON-LD type `"TestSuite"`, resolved to `https://w3id.org/ro/terms/test#TestSuite`.
+
+---
+
+## Creating a TestSuite
+
+### Via `ROCrate.add_test_suite()` (recommended)
+
+```python
+suite = crate.add_test_suite(
+    identifier=None,
+    name=None,
+    main_entity=None,
+    properties=None,
+)
+```
+
+`add_test_suite` constructs a `TestSuite`, registers it in the crate, links it to the workflow, and appends it to the root dataset's `mentions` (or `about`) list. It also merges `TESTING_EXTRA_TERMS` into the metadata context so all ro-terms vocabulary is declared automatically.
+
+<ParamField path="identifier" type="str" optional>
+  Fragment identifier for the suite, e.g. `"#test1"`. When omitted, a unique ID
+  is auto-generated.
+</ParamField>
+
+<ParamField path="name" type="str" optional>
+  Human-readable label for the suite. Defaults to the bare identifier string
+  (without the leading `#`) when not supplied.
+</ParamField>
+
+<ParamField path="main_entity" type="ComputationalWorkflow | str" optional>
+  The workflow entity (or its string ID) this suite targets. When omitted the
+  crate's `mainEntity` is used. If neither is available the suite is linked via
+  `about` rather than `mentions`.
+</ParamField>
+
+<ParamField path="properties" type="dict" optional>
+  Extra JSON-LD properties to set on the entity at creation time.
+</ParamField>
+
+**Returns** a `TestSuite` instance.
+
+### Direct construction (low-level)
+
+```python
+from rocrate.model.testsuite import TestSuite
+
+suite = TestSuite(crate, identifier="#test1", properties={"name": "Test 1"})
+crate.add(suite)
+crate.root_dataset.append_to("mentions", suite)
+```
+
+<Note>
+  Direct construction does **not** merge `TESTING_EXTRA_TERMS` into the context
+  and does **not** link `mainEntity` automatically. Prefer
+  `crate.add_test_suite()` in almost all cases.
+</Note>
+
+---
+
+## Properties
+
+### `name`
+
+<ResponseField name="name" type="str | None">
+  Human-readable name for the suite.
+
+  ```python
+  suite.name = "Sort and Change Case Tests"
+  print(suite.name)  # "Sort and Change Case Tests"
+  ```
+</ResponseField>
+
+### `instance`
+
+<ResponseField name="instance" type="list[TestInstance] | TestInstance | None">
+  The `TestInstance` objects that belong to this suite. The getter returns
+  whatever is stored in the `"instance"` property — a list when multiple
+  instances have been appended via `suite.append_to("instance", inst)`, or a
+  single entity when only one was set directly. Use `crate.add_test_instance()`
+  to add instances correctly.
+
+  ```python
+  # read
+  for inst in suite.instance or []:
+      print(inst.url)
+
+  # write (direct assignment replaces the whole list)
+  suite.instance = [instance_a, instance_b]
+  ```
+</ResponseField>
+
+### `definition`
+
+<ResponseField name="definition" type="TestDefinition | None">
+  The single `TestDefinition` linked to this suite. Set automatically by
+  `crate.add_test_definition()`.
+
+  ```python
+  defn = suite.definition
+  print(defn.engineVersion)
+  ```
+</ResponseField>
+
+---
+
+## `crate.test_suites`
+
+```python
+suites = crate.test_suites  # -> list[TestSuite]
+```
+
+Returns all `TestSuite` entities referenced by the root dataset's `mentions` or `about` properties (de-duplicated). Non-`TestSuite` entities in those lists are filtered out.
+
+```python
+for suite in crate.test_suites:
+    print(suite.id, suite.name)
+```
+
+---
+
+## `TESTING_EXTRA_TERMS`
+
+`TESTING_EXTRA_TERMS` is a dictionary of additional JSON-LD term definitions from the `ro-terms` test vocabulary. It is merged into the metadata's `extra_terms` whenever any of the `add_test_*` helpers are called, so you never need to add it manually.
+
+```python
+from rocrate.model.metadata import TESTING_EXTRA_TERMS
+
+# {
+#   "TestSuite":      "https://w3id.org/ro/terms/test#TestSuite",
+#   "TestInstance":   "https://w3id.org/ro/terms/test#TestInstance",
+#   "TestService":    "https://w3id.org/ro/terms/test#TestService",
+#   "TestDefinition": "https://w3id.org/ro/terms/test#TestDefinition",
+#   "PlanemoEngine":  "https://w3id.org/ro/terms/test#PlanemoEngine",
+#   "JenkinsService": "https://w3id.org/ro/terms/test#JenkinsService",
+#   "TravisService":  "https://w3id.org/ro/terms/test#TravisService",
+#   "GithubService":  "https://w3id.org/ro/terms/test#GithubService",
+#   "instance":       "https://w3id.org/ro/terms/test#instance",
+#   "runsOn":         "https://w3id.org/ro/terms/test#runsOn",
+#   "resource":       "https://w3id.org/ro/terms/test#resource",
+#   "definition":     "https://w3id.org/ro/terms/test#definition",
+#   "engineVersion":  "https://w3id.org/ro/terms/test#engineVersion"
+# }
+```
+
+---
+
+## CLI equivalent
+
+```bash
+rocrate add test-suite -i '#test1' -n 'Test 1'
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `-i` / `--identifier` | Fragment identifier (e.g. `#test1`) |
+| `-n` / `--name` | Human-readable suite name |
+| `-m` / `--main-entity` | ID string of the workflow to link |
+| `-c` / `--crate-dir` | Path to the crate root (default: `.`) |
+| `-P` / `--property` | Extra `KEY=VALUE` property, repeatable |
+
+---
+
+## Full example
+
+```python
+from rocrate.rocrate import ROCrate
+from rocrate.model import ComputationalWorkflow
+
+# 1. Create a crate and register the workflow
+crate = ROCrate()
+wf = crate.add_workflow(
+    "sort-and-change-case.ga",
+    main=True,
+    lang="galaxy",
+)
+
+# 2. Add a test suite linked to the workflow
+suite = crate.add_test_suite(identifier="#test1", name="Sort & Change Case Tests")
+print(suite.id)    # "#test1"
+print(suite.name)  # "Sort & Change Case Tests"
+print(suite["mainEntity"] is wf)  # True
+
+# 3. The suite is now discoverable via crate.test_suites
+assert suite in crate.test_suites
+
+# 4. Add an instance (see TestInstance docs)
+instance = crate.add_test_instance(
+    suite,
+    "http://ci.example.org",
+    resource="job/tests/",
+    service="jenkins",
+    identifier="#test1_1",
+    name="Test 1 – Jenkins",
+)
+
+# 5. Add a definition (see TestDefinition docs)
+definition = crate.add_test_definition(
+    suite,
+    source="test/test1/sort-and-change-case-test.yml",
+    dest_path="test/test1/sort-and-change-case-test.yml",
+    engine="planemo",
+    engine_version=">=0.70",
+)
+
+# 6. Verify the graph is wired up correctly
+assert suite.instance[0] is instance
+assert suite.definition is definition
+
+# 7. Write the crate to disk
+crate.write("my-workflow-crate")
+```
+
+<Tip>
+  A single crate can hold multiple test suites — for example, one per workflow
+  or one per CI environment. Each call to `crate.add_test_suite()` appends a
+  new entry to `root_dataset["mentions"]` and returns an independent
+  `TestSuite` object.
+</Tip>

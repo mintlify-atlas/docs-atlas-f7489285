@@ -1,0 +1,185 @@
+---
+title: "Person Entity — Represent People in an RO-Crate"
+sidebarTitle: "Person"
+description: "The Person class represents a human contributor in an RO-Crate. Use ORCID URIs as identifiers and attach people to files as authors."
+---
+
+When a dataset, manuscript, or workflow has human contributors, you represent them as `Person` contextual entities. A `Person` entity is a JSON-LD record in `ro-crate-metadata.json` — it describes a human being but is **not** stored as a file inside the crate. The canonical identifier for a person is their [ORCID](https://orcid.org/) URI, which makes the entity globally unambiguous and machine-resolvable.
+
+## Class overview
+
+```python
+from rocrate.model.person import Person
+```
+
+`Person` extends `ContextEntity` and sets `@type` to `"Person"` automatically. No additional methods or properties are defined beyond the base `Entity` interface — all property access, linking, and serialization is inherited.
+
+## Constructor
+
+```python
+Person(crate, identifier=None, properties=None)
+```
+
+<ParamField path="crate" type="ROCrate" required>
+  The `ROCrate` instance this person belongs to.
+</ParamField>
+
+<ParamField path="identifier" type="str" default="auto-generated #uuid4">
+  The `@id` for this entity. The strongly recommended value is the person's
+  ORCID URI, e.g. `"https://orcid.org/0000-0002-1825-0097"`. Any absolute URI
+  (Wikipedia page, institutional profile) or `#fragment` identifier is
+  technically valid, but ORCID provides the best interoperability with
+  downstream catalogues and registries.
+</ParamField>
+
+<ParamField path="properties" type="dict" default="{}">
+  Additional JSON-LD properties. Common keys are listed in the table below. You
+  do **not** need to include `"@type": "Person"` — it is set automatically.
+</ParamField>
+
+## Recommended properties
+
+| Property | Type | Description |
+|---|---|---|
+| `name` | `str` | Full display name, e.g. `"Alice Doe"`. |
+| `affiliation` | `str` or `ContextEntity` | Institutional affiliation. Can be a plain string or an `Organization` contextual entity. |
+| `email` | `str` | Contact email address. |
+| `url` | `str` | Personal or institutional homepage. |
+
+<Info>
+  All property access uses the dictionary interface inherited from `Entity`.
+  Reading `person["name"]` returns the stored value; writing
+  `person["name"] = "Alice"` updates it in the underlying JSON-LD record.
+</Info>
+
+## Adding a person to a crate
+
+```python
+from rocrate.rocrate import ROCrate
+from rocrate.model.person import Person
+
+crate = ROCrate()
+
+alice = crate.add(Person(crate, "https://orcid.org/0000-0000-0000-0000", properties={
+    "name": "Alice Doe",
+    "affiliation": "University of Flatland"
+}))
+```
+
+`crate.add()` returns the `Person` object so you can immediately use it to build relationships.
+
+## Linking people to data entities
+
+Set the `author` property on a data entity to a single `Person` or a list:
+
+```python
+paper = crate.add_file("paper.pdf", properties={"name": "manuscript"})
+
+# Single author
+paper["author"] = alice
+
+# Multiple authors — pass a list
+paper["author"] = [alice, bob]
+```
+
+<Warning>
+  Entity properties store cross-references as `{"@id": ...}` dicts internally.
+  Calling `paper["author"].append(carol)` on the **returned list** has no
+  effect on the crate; the list is generated on the fly. Use
+  `append_to` instead (see below).
+</Warning>
+
+## Appending without overwriting — `append_to`
+
+```python
+carol = crate.add(Person(crate, "https://orcid.org/0000-0000-0000-0002", properties={
+    "name": "Carol Doe"
+}))
+
+# Adds carol without clobbering the existing [alice, bob] list
+paper.append_to("author", carol)
+```
+
+`append_to` handles all edge cases safely: if the property is missing it creates it; if it currently holds a single scalar value it promotes it to a list first.
+
+## Full example — Alice and Bob
+
+The following example mirrors the introductory README scenario: two authors collaborate on a paper, a CSV dataset, and a diagram.
+
+```python
+from rocrate.rocrate import ROCrate
+from rocrate.model.person import Person
+
+crate = ROCrate()
+
+# Data entities
+paper   = crate.add_file("exp/paper.pdf",    properties={"name": "manuscript",        "encodingFormat": "application/pdf"})
+table   = crate.add_file("exp/results.csv",  properties={"name": "experimental data", "encodingFormat": "text/csv"})
+diagram = crate.add_file("exp/diagram.svg",  properties={"name": "bar chart",         "encodingFormat": "image/svg+xml"})
+
+# Contextual entities — the people
+alice_id = "https://orcid.org/0000-0000-0000-0000"
+bob_id   = "https://orcid.org/0000-0000-0000-0001"
+
+alice = crate.add(Person(crate, alice_id, properties={
+    "name": "Alice Doe",
+    "affiliation": "University of Flatland"
+}))
+bob = crate.add(Person(crate, bob_id, properties={
+    "name": "Bob Doe",
+    "affiliation": "University of Flatland"
+}))
+
+# Relationships
+paper["author"]   = [alice, bob]
+table["author"]   = alice
+diagram["author"] = bob
+
+crate.write("exp_crate")
+```
+
+After serialization, `ro-crate-metadata.json` will contain `Person` nodes for Alice and Bob, and each file entity will carry `"author"` references pointing to their ORCID URIs.
+
+## Inspecting the JSON-LD output
+
+```python
+import json
+print(json.dumps(alice.properties(), indent=2))
+```
+
+```json
+{
+  "@id": "https://orcid.org/0000-0000-0000-0000",
+  "@type": "Person",
+  "name": "Alice Doe",
+  "affiliation": "University of Flatland"
+}
+```
+
+## Alternative: `crate.add_jsonld`
+
+If you are populating a crate from an existing JSON-LD source, you can skip the `Person` constructor entirely:
+
+```python
+crate.add_jsonld({
+    "@id": "https://orcid.org/0000-0000-0000-0000",
+    "@type": "Person",
+    "name": "Alice Doe",
+    "affiliation": "University of Flatland"
+})
+```
+
+<Note>
+  `Person` is a **contextual entity**, not a data entity. It will appear in
+  `crate.contextual_entities` but **not** in `crate.data_entities`, and no
+  file representing Alice is written to disk when `crate.write()` is called.
+</Note>
+
+## Reading people from an existing crate
+
+```python
+crate = ROCrate("exp_crate")
+for entity in crate.contextual_entities:
+    if entity.type == "Person":
+        print(entity.id, entity.get("name"))
+```

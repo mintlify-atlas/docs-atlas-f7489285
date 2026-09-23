@@ -1,0 +1,195 @@
+---
+title: "Reading and Consuming Existing RO-Crates"
+sidebarTitle: "Reading Crates"
+description: "Load an existing RO-Crate from a directory, zip archive, remote URL, or JSON-LD dictionary and traverse its entities with ro-crate-py."
+---
+
+ro-crate-py can consume an RO-Crate from almost any source: a local directory tree, a ZIP archive, a remote metadata file, or a raw JSON-LD dictionary obtained from an API. Once loaded, the resulting `ROCrate` object provides a uniform API for iterating entities, fetching by identifier, and reading property values. This guide covers every loading method and the most useful traversal patterns.
+
+## Loading from a directory
+
+Pass the path of an unpacked crate directory to `ROCrate`. The library looks for `ro-crate-metadata.json` (or the legacy `ro-crate-metadata.jsonld`) at the top level and parses the entity graph.
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate("exp_crate")
+```
+
+## Loading from a ZIP archive
+
+The library detects ZIP files automatically — pass the `.zip` path exactly as you would a directory:
+
+```python
+crate = ROCrate("exp_crate.zip")
+```
+
+Internally, the archive is extracted to a temporary directory that is cleaned up when the Python process exits.
+
+## Loading from a remote URL
+
+Pass an HTTPS URL that points directly to an `ro-crate-metadata.json` file (or its legacy equivalent). This works for both attached and detached crates:
+
+```python
+base = "https://raw.githubusercontent.com/ResearchObject/ro-crate-py/master/test/test-data/"
+crate = ROCrate(f"{base}detached-ro-crate-metadata.json")
+
+print(crate.root_dataset.id)  # the base URL of the crate
+```
+
+<Note>
+  A `file://` URI pointing to a local metadata file is also accepted, making it easy to load detached crates stored as standalone JSON files:
+
+  ```python
+  crate = ROCrate("file:///tmp/example-ro-crate-metadata.json")
+  ```
+</Note>
+
+## Loading from a JSON-LD dictionary
+
+If you already have the RO-Crate metadata in memory — retrieved from a database, an API response, or assembled programmatically — pass the parsed dictionary directly:
+
+```python
+import json
+from rocrate.rocrate import ROCrate
+
+with open("/tmp/example-ro-crate-metadata.json") as f:
+    metadata = json.load(f)
+
+crate = ROCrate(metadata)
+```
+
+This is the recommended approach for detached crates consumed via an API endpoint where no filesystem path exists.
+
+## Iterating all entities
+
+`crate.get_entities()` returns all entities in the crate — special entities first, then data entities, then contextual entities:
+
+```python
+for e in crate.get_entities():
+    print(e.id, e.type)
+```
+
+```text
+./                                  Dataset
+ro-crate-metadata.json              CreativeWork
+paper.pdf                           File
+results.csv                         File
+images/figure.svg                   File
+https://orcid.org/0000-0000-0000-0000  Person
+https://orcid.org/0000-0000-0000-0001  Person
+```
+
+## Accessing data and contextual entity lists
+
+`crate.data_entities` and `crate.contextual_entities` are convenience properties that filter the full entity map — special entities (`RootDataset`, `Metadata`, `Preview`) are excluded from both:
+
+```python
+# All File and Dataset entities
+for e in crate.data_entities:
+    author = e.get("author")
+    if not author:
+        continue
+    elif isinstance(author, list):
+        print(e.id, [p["name"] for p in author])
+    else:
+        print(e.id, repr(author["name"]))
+```
+
+```text
+paper.pdf ['Alice Doe', 'Bob Doe']
+results.csv 'Alice Doe'
+images/figure.svg 'Bob Doe'
+```
+
+<CardGroup cols={2}>
+  <Card title="data_entities" icon="database">
+    Entities that correspond to files or directories — anything with a `write` method (i.e. `File`, `Dataset`, and subclasses).
+  </Card>
+  <Card title="contextual_entities" icon="tag">
+    Entities that describe non-digital things — `Person`, `Organization`, `ContextEntity`, and so on.
+  </Card>
+</CardGroup>
+
+## Fetching an entity by identifier
+
+`crate.dereference(id)` looks up an entity by its `@id`. The method is also aliased as `crate.get()` for convenience.
+
+```python
+article = crate.dereference("paper.pdf")
+# or equivalently:
+article = crate.get("paper.pdf")
+
+print(article["name"])  # "manuscript"
+```
+
+Both methods return `None` (or the optional `default` argument) when no entity with the given identifier is found.
+
+## Filtering entities by type
+
+`crate.get_by_type(type_)` returns all entities whose `@type` includes the given type. Pass a list to require all listed types (subset match):
+
+```python
+people = crate.get_by_type("Person")
+for p in people:
+    print(p.id, p["name"])
+```
+
+Pass `exact=True` to require an exact type match instead of a subset:
+
+```python
+files_only = crate.get_by_type("File", exact=True)
+```
+
+## Accessing special entities
+
+The root dataset and the metadata descriptor are always present and are exposed as first-class attributes:
+
+```python
+# Root dataset — represents the crate itself
+root = crate.root_dataset
+print(root.id)           # "./"
+print(root["name"])      # crate name, if set
+
+# Metadata file descriptor
+md = crate.metadata
+print(md.id)             # "ro-crate-metadata.json"
+print(md.version)        # e.g. "1.2"
+```
+
+<Note>
+  `crate.root_dataset` and `crate.metadata` cannot be deleted. Attempting to do so raises a `ValueError`.
+</Note>
+
+## Reading entity properties
+
+Entities implement `MutableMapping`, so you can read properties with dict-style access or the safer `.get()` method:
+
+```python
+entity = crate.dereference("paper.pdf")
+
+# Raises KeyError if the property is absent
+name = entity["name"]
+
+# Returns None (or a default) if the property is absent
+enc  = entity.get("encodingFormat")
+
+# Test for presence
+if "author" in entity:
+    authors = entity["author"]
+```
+
+When a property value is a `{"@id": ...}` reference, the library automatically **dereferences** it and returns the corresponding entity object. Multi-valued properties are returned as a Python list; single values are returned directly.
+
+## Detecting the specification version
+
+The RO-Crate version is read from the `conformsTo` field of the metadata descriptor and is accessible via `crate.version`:
+
+```python
+crate = ROCrate("exp_crate")
+print(crate.version)  # e.g. "1.2"
+```
+
+<Tip>
+  When consuming a crate, the `version` constructor parameter is always ignored — the version comes from the metadata. Use `crate.version` after loading to determine what specification the crate was authored against.
+</Tip>

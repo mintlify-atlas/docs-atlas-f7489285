@@ -1,20 +1,92 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "ro-crate-py: Python Library for Research Object Crates"
+sidebarTitle: "Home"
+description: "ro-crate-py is a Python library to create, read, and manipulate RO-Crates — a standards-based format for packaging research data with rich JSON-LD metadata."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+ro-crate-py is the official Python implementation of the [RO-Crate](https://www.researchobject.org/ro-crate/) specification. It lets you programmatically build, read, and modify Research Object Crates — self-describing data packages that bundle files with structured, machine-readable metadata using JSON-LD. The library supports RO-Crate specifications 1.0, 1.1, and 1.2, and ships with a `rocrate` command-line tool for shell-based workflows.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install ro-crate-py via pip with Python 3.9+ and get your environment ready.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first RO-Crate, add files and entities, and write it to disk in minutes.
+  </Card>
+  <Card title="Guides" icon="book-open" href="/guides/creating-crates">
+    Deep-dive guides covering crate creation, reading, workflows, detached crates, and more.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/rocrate">
+    Full reference for every class and method in the public API.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## What is an RO-Crate?
+
+An RO-Crate is a directory tree (or zip archive) with an `ro-crate-metadata.json` file at the top level. That metadata file uses JSON-LD to describe the files and directories inside the crate (*data entities*) as well as related non-digital things like people, organizations, or software (*contextual entities*). RO-Crates are used to publish and exchange research data in a FAIR-compliant, self-describing format.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Create & Write Crates" icon="folder-plus" href="/guides/creating-crates">
+    Add files, directories, and rich metadata programmatically. Write crates to disk or stream them as ZIP archives.
+  </Card>
+  <Card title="Read & Consume Crates" icon="magnifying-glass" href="/guides/reading-crates">
+    Load existing crates from local directories, zip files, remote URLs, or raw JSON-LD dictionaries.
+  </Card>
+  <Card title="Workflow RO-Crates" icon="diagram-project" href="/guides/workflows">
+    Register scientific workflows (CWL, Galaxy, Nextflow, Snakemake, KNIME, and more) with full provenance metadata.
+  </Card>
+  <Card title="CLI Tool" icon="terminal" href="/cli/overview">
+    Initialize crates and add entities from the command line using the built-in `rocrate` tool.
+  </Card>
+  <Card title="Detached Crates" icon="link" href="/guides/detached-crates">
+    Work with RO-Crate 1.2 detached crates — metadata-only packages with web-based data entity identifiers.
+  </Card>
+  <Card title="Nested Subcrates" icon="layer-group" href="/guides/subcrates">
+    Compose hierarchical crate structures by embedding one RO-Crate inside another.
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+```python quickstart.py
+from rocrate.rocrate import ROCrate
+from rocrate.model.person import Person
+
+crate = ROCrate()
+
+# Add a file
+paper = crate.add_file("paper.pdf", properties={
+    "name": "Research Paper",
+    "encodingFormat": "application/pdf"
+})
+
+# Add a person (contextual entity)
+alice = crate.add(Person(crate, "https://orcid.org/0000-0000-0000-0000", properties={
+    "name": "Alice Doe"
+}))
+
+# Link entities
+paper["author"] = alice
+
+# Write crate to disk
+crate.write("my_crate/")
+```
+
+<Steps>
+  <Step title="Install the library">
+    ```bash
+    pip install rocrate
+    ```
+  </Step>
+  <Step title="Create your first crate">
+    Import `ROCrate`, add files and entities, and call `crate.write()` to serialize.
+  </Step>
+  <Step title="Explore the guides">
+    Check the [Guides](/guides/creating-crates) section for in-depth coverage of all features.
+  </Step>
+  <Step title="Browse the API reference">
+    The [API Reference](/api/rocrate) documents every public class and method with type signatures.
+  </Step>
+</Steps>

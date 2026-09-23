@@ -1,0 +1,287 @@
+---
+title: "TestInstance — CI Service Instance for Workflow Tests"
+sidebarTitle: "TestInstance"
+description: "TestInstance links a test suite to a CI service URL. Supported services are Jenkins, Travis, and GitHub Actions via the ro-terms vocabulary."
+---
+
+`TestInstance` represents a single execution environment for a workflow test suite — typically a job or pipeline on a CI service such as Jenkins, Travis CI, or GitHub Actions. Each instance is linked to a `TestSuite` via the suite's `instance` list property, and carries the base URL of the CI service, an optional sub-path resource, and a `TestService` entity that identifies which platform it runs on. The `runsOn` property is the canonical JSON-LD predicate; `service` is an alias pointing to the same data.
+
+## Class hierarchy
+
+```
+ContextEntity
+└── TestInstance
+```
+
+`TestInstance` extends `ContextEntity` and carries the JSON-LD type `"TestInstance"`, resolved to `https://w3id.org/ro/terms/test#TestInstance`.
+
+---
+
+## Creating a TestInstance
+
+### Via `ROCrate.add_test_instance()` (recommended)
+
+```python
+instance = crate.add_test_instance(
+    suite,
+    url,
+    resource="",
+    service="jenkins",
+    identifier=None,
+    name=None,
+    properties=None,
+)
+```
+
+`add_test_instance` constructs and registers a `TestInstance`, resolves (or creates) the appropriate `TestService`, appends the instance to `suite["instance"]`, and merges `TESTING_EXTRA_TERMS` into the metadata context.
+
+<ParamField path="suite" type="TestSuite | str" required>
+  The parent `TestSuite` object, or its string ID (e.g. `"#test1"`). The crate
+  must already contain a suite with that ID.
+</ParamField>
+
+<ParamField path="url" type="str" required>
+  Base URL of the CI service job or pipeline, e.g.
+  `"http://ci.example.org"`.
+</ParamField>
+
+<ParamField path="resource" type="str" default='""'>
+  Sub-path appended to `url` to locate the specific job, e.g. `"jobs"` or
+  `"job/tests/"`. Defaults to an empty string.
+</ParamField>
+
+<ParamField path="service" type='str | TestService' default='"jenkins"'>
+  The CI service to link. Pass one of the built-in name strings — `"jenkins"`,
+  `"travis"`, or `"github"` — and the corresponding `TestService` entity is
+  created and added to the crate automatically. Alternatively, pass an existing
+  `TestService` instance that was already added to this crate.
+</ParamField>
+
+<ParamField path="identifier" type="str" optional>
+  Fragment identifier for the instance, e.g. `"#test1_1"`. Auto-generated when
+  omitted.
+</ParamField>
+
+<ParamField path="name" type="str" optional>
+  Human-readable label. Defaults to the bare identifier string (without `#`).
+</ParamField>
+
+<ParamField path="properties" type="dict" optional>
+  Additional JSON-LD properties to set at creation time.
+</ParamField>
+
+**Returns** a `TestInstance` object.
+
+### Direct construction (low-level)
+
+```python
+from rocrate.model.testinstance import TestInstance
+from rocrate.model.testservice import TestService, JENKINS_ID
+
+service = TestService(crate, identifier=JENKINS_ID, properties={
+    "name": "Jenkins",
+    "url": {"@id": "https://www.jenkins.io"},
+})
+crate.add(service)
+
+instance = TestInstance(crate, identifier="#test1_1")
+crate.add(instance)
+instance.url = "http://ci.example.org"
+instance.resource = "job/tests/"
+instance.runsOn = service   # or instance.service = service (alias)
+instance.name = "Test 1 – Jenkins"
+
+suite.append_to("instance", instance)
+```
+
+<Warning>
+  Direct construction bypasses the automatic `TESTING_EXTRA_TERMS` injection
+  and service lookup. Always prefer `crate.add_test_instance()` unless you need
+  fine-grained control.
+</Warning>
+
+---
+
+## Properties
+
+### `url`
+
+<ResponseField name="url" type="str | None">
+  The base URL of the CI service entry point.
+
+  ```python
+  instance.url = "http://ci.example.org"
+  print(instance.url)  # "http://ci.example.org"
+  ```
+</ResponseField>
+
+### `resource`
+
+<ResponseField name="resource" type="str | None">
+  Sub-path that, combined with `url`, gives the full address of the specific
+  job. Defined as `https://w3id.org/ro/terms/test#resource`.
+
+  ```python
+  instance.resource = "job/tests/"
+  ```
+</ResponseField>
+
+### `runsOn` / `service`
+
+<ResponseField name="runsOn" type="TestService | None">
+  The `TestService` entity describing the CI platform. `service` is a module-level
+  alias for `runsOn`; both attributes read from and write to the same
+  `"runsOn"` JSON-LD property.
+
+  ```python
+  print(instance.runsOn.name)   # "Jenkins"
+  print(instance.service.name)  # "Jenkins"  (same object)
+
+  # Reassign via either name
+  instance.service = github_service
+  assert instance.runsOn is github_service
+  ```
+</ResponseField>
+
+### `name`
+
+<ResponseField name="name" type="str | None">
+  Human-readable label for the instance.
+
+  ```python
+  instance.name = "Jenkins – sort-and-change-case"
+  ```
+</ResponseField>
+
+---
+
+## TestService entities
+
+`TestService` (extends `ContextEntity`) identifies the CI platform. Three canonical singletons are defined in `rocrate.model.testservice`:
+
+| Name string | Class identifier | Canonical IRI |
+|-------------|-----------------|---------------|
+| `"jenkins"` | `JenkinsService` | `https://w3id.org/ro/terms/test#JenkinsService` |
+| `"travis"` | `TravisService` | `https://w3id.org/ro/terms/test#TravisService` |
+| `"github"` | `GithubService` | `https://w3id.org/ro/terms/test#GithubService` |
+
+Each service entity has `name` and `url` properties pointing to the platform's canonical website.
+
+### `SERVICE_MAP` and `get_service()`
+
+```python
+from rocrate.model.testservice import SERVICE_MAP, get_service
+
+# SERVICE_MAP maps name strings to factory functions
+# {"jenkins": <func>, "travis": <func>, "github": <func>}
+
+service = get_service(crate, "jenkins")
+# Returns a TestService(crate, identifier=JENKINS_ID, properties={...})
+```
+
+<ParamField path="crate" type="ROCrate" required>
+  The crate the service entity will belong to.
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  One of `"jenkins"`, `"travis"`, or `"github"` (case-insensitive). Raises
+  `ValueError` for unknown names.
+</ParamField>
+
+### `TestService` properties
+
+<ResponseField name="name" type="str | None">
+  Display name of the CI platform, e.g. `"Jenkins"` or `"Github Actions"`.
+</ResponseField>
+
+<ResponseField name="url" type="str | None">
+  Canonical website URL of the CI platform.
+</ResponseField>
+
+---
+
+## CLI equivalent
+
+```bash
+rocrate add test-instance '#test1' http://example.com \
+    -r jobs \
+    -s jenkins \
+    -i '#test1_1'
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `suite` (positional) | ID of the parent `TestSuite`, e.g. `'#test1'` |
+| `url` (positional) | CI service base URL |
+| `-r` / `--resource` | Resource sub-path (default: `""`) |
+| `-s` / `--service` | Service name: `jenkins`, `travis`, or `github` (default: `jenkins`) |
+| `-i` / `--identifier` | Fragment identifier for the instance |
+| `-n` / `--name` | Human-readable instance name |
+| `-c` / `--crate-dir` | Path to the crate root (default: `.`) |
+| `-P` / `--property` | Extra `KEY=VALUE` property, repeatable |
+
+---
+
+## Full example: suite → instance chain
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+
+# Register the workflow
+wf = crate.add_workflow(
+    "sort-and-change-case.ga",
+    main=True,
+    lang="galaxy",
+)
+
+# Create the parent suite
+suite = crate.add_test_suite(
+    identifier="#test1",
+    name="Sort & Change Case Tests",
+)
+
+# Attach a Jenkins-based instance
+instance = crate.add_test_instance(
+    suite,
+    url="http://ci.example.org",
+    resource="job/tests/",
+    service="jenkins",
+    identifier="#test1_1",
+    name="Test 1 – Jenkins",
+)
+
+print(instance.id)            # "#test1_1"
+print(instance.url)           # "http://ci.example.org"
+print(instance.resource)      # "job/tests/"
+print(instance.service.name)  # "Jenkins"
+
+# Suite references the instance
+assert suite.instance[0] is instance
+
+# Attach a GitHub Actions instance to the same suite
+gh_instance = crate.add_test_instance(
+    suite,
+    url="https://github.com/myorg/myrepo",
+    resource="actions",
+    service="github",
+    identifier="#test1_2",
+    name="Test 1 – GitHub Actions",
+)
+
+print(gh_instance.service.name)  # "Github Actions"
+assert len(suite.instance) == 2
+
+crate.write("my-workflow-crate")
+```
+
+<Tip>
+  When you pass a name string for `service`, `add_test_instance` checks whether
+  the corresponding `TestService` entity already exists in the crate (by IRI)
+  and adds it only if absent. Multiple instances that share the same service
+  platform therefore reference the same `TestService` node in the JSON-LD
+  graph.
+</Tip>

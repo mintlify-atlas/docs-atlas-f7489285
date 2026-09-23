@@ -1,72 +1,99 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "ro-crate-py",
+  "theme": "luma",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#eb9419",
+    "light": "#377cc7",
+    "dark": "#6380bc"
   },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
+  "favicon": "https://media.brand.dev/8a503bcd-ebbf-40fe-9c8c-ef6476b144c0.png",
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "https://media.brand.dev/3f576b72-d058-44dd-b8c2-5f2a6b85bf7c.svg",
+    "dark": "https://media.brand.dev/3f576b72-d058-44dd-b8c2-5f2a6b85bf7c.svg"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/ResearchObject/ro-crate-py"
     }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/ResearchObject/ro-crate-py"
     }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-crates",
+              "guides/reading-crates",
+              "guides/entities",
+              "guides/workflows",
+              "guides/detached-crates",
+              "guides/subcrates"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/overview",
+              "cli/init",
+              "cli/add"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/rocrate",
+              "api/entity",
+              "api/metadata"
+            ]
+          },
+          {
+            "group": "Data Entities",
+            "pages": [
+              "api/file",
+              "api/dataset",
+              "api/computational-workflow"
+            ]
+          },
+          {
+            "group": "Contextual Entities",
+            "pages": [
+              "api/context-entity",
+              "api/person",
+              "api/computer-language"
+            ]
+          },
+          {
+            "group": "Testing Entities",
+            "pages": [
+              "api/test-suite",
+              "api/test-instance",
+              "api/test-definition"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

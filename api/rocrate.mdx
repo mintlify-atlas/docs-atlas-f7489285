@@ -1,0 +1,995 @@
+---
+title: "ROCrate Class — Core RO-Crate Object"
+sidebarTitle: "ROCrate"
+description: "ROCrate is the central class in ro-crate-py. Create, read, modify, and write RO-Crates to disk or ZIP using its full-featured Python API."
+---
+
+`ROCrate` is the top-level object you interact with in ro-crate-py. It manages every entity in the crate — files, datasets, workflows, people, test suites, and more — and handles all reading and writing operations. You can create a brand-new crate from scratch, initialise one from an existing directory tree, or read an existing crate from a directory or ZIP file.
+
+## Constructor
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+```
+
+<ParamField path="source" type="str | Path | dict | None" default="None">
+  The source for the crate. Accepts a local directory path, a path to a ZIP
+  file, a URL pointing to a remote `ro-crate-metadata.json`, or a raw JSON-LD
+  dict. When `None` the crate starts empty in create mode.
+</ParamField>
+
+<ParamField path="gen_preview" type="bool" default="False">
+  When `True`, generates an HTML preview file (`ro-crate-preview.html`) and
+  registers it as the `Preview` entity.
+</ParamField>
+
+<ParamField path="init" type="bool" default="False">
+  When `True`, recursively walks `source` (which must be a directory) and
+  registers every file and sub-directory as data entities, creating a fresh
+  metadata file. Cannot be combined with a `dict` source.
+</ParamField>
+
+<ParamField path="exclude" type="list[str] | None" default="None">
+  A list of file or directory names to skip when walking `source` in `init`
+  mode or when copying unlisted files during `write`.
+</ParamField>
+
+<ParamField path="version" type="str" default='"1.2"'>
+  The RO-Crate specification version to use when creating a new crate.
+  Supported values: `"1.0"`, `"1.0-DRAFT"`, `"1.1"`, `"1.1-DRAFT"`, `"1.2"`,
+  `"1.2-DRAFT"`.
+</ParamField>
+
+<ParamField path="load_subcrates" type="bool" default="False">
+  When `True`, dataset entities whose `conformsTo` references an
+  `https://w3id.org/ro/crate` profile are loaded as lazy `Subcrate` objects
+  rather than plain `Dataset` objects.
+</ParamField>
+
+<ParamField path="root_dataset_id" type="str | None" default="None">
+  Override the root dataset `@id`. Must be either `"./"` or an absolute URI.
+  Only meaningful when creating a new crate (no `source`).
+</ParamField>
+
+### Quick-start examples
+
+```python
+# Create an empty crate
+crate = ROCrate()
+
+# Read an existing crate from a directory
+crate = ROCrate("path/to/my-crate/")
+
+# Read from a ZIP file
+crate = ROCrate("my-crate.zip")
+
+# Initialise a crate from an existing directory tree (adds all files)
+crate = ROCrate("path/to/data/", init=True)
+
+# Create with a specific spec version
+crate = ROCrate(version="1.1")
+```
+
+---
+
+## Entity Management
+
+### `add`
+
+```python
+crate.add(*entities)
+```
+
+Add one or more `Entity` objects to the crate. If an entity with the same canonical `@id` already exists it is silently **replaced**, consistent with Python dictionary semantics. When a new writable data entity is added it is automatically appended to the root dataset's `hasPart`.
+
+<ParamField path="*entities" type="Entity">
+  One or more entity instances (e.g. `File`, `Dataset`, `ContextEntity`).
+</ParamField>
+
+<ResponseField name="return" type="Entity | tuple[Entity, ...]">
+  The single added entity when one argument is provided, or a tuple of added
+  entities when multiple arguments are provided.
+</ResponseField>
+
+```python
+from rocrate.model import ContextEntity
+
+person = ContextEntity(crate, "#alice", {"@type": "Person", "name": "Alice"})
+crate.add(person)
+
+# Add multiple entities at once
+file1 = crate.add_file("data.csv")
+file2 = crate.add_file("results.csv")
+```
+
+<Note>
+  The RO-Crate specification states that multiple entities with the same `@id`
+  result in undefined behaviour. `add` enforces last-write-wins semantics so
+  that only one entity per `@id` is kept.
+</Note>
+
+---
+
+### `delete`
+
+```python
+crate.delete(*entities)
+```
+
+Remove one or more entities from the crate. Accepts either `Entity` instances or string `@id` values. The root dataset and metadata entities cannot be deleted and will raise `ValueError`.
+
+<ParamField path="*entities" type="Entity | str">
+  Entities to delete. Strings are resolved via `dereference` before deletion.
+</ParamField>
+
+<Warning>
+  Deletion does **not** update other entities that reference the deleted entity.
+  The crate may be left in an inconsistent state — check and clean up dependent
+  entities manually.
+</Warning>
+
+```python
+crate.delete("paper.pdf")           # by @id string
+crate.delete(crate.get("paper.pdf"))  # by Entity instance
+```
+
+---
+
+## Adding Data Entities
+
+### `add_file`
+
+```python
+crate.add_file(
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+    record_size=False,
+)
+```
+
+Register a file as a `File` data entity and return it.
+
+<ParamField path="source" type="str | Path | None">
+  Local filesystem path or URL of the source file. If `None`, a metadata-only
+  entry is created with no physical file backing.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None">
+  Relative path within the crate where the file will be written. Derived from
+  the `source` basename when omitted.
+</ParamField>
+
+<ParamField path="fetch_remote" type="bool" default="False">
+  Download a remote URL and store it locally in the crate during `write`.
+</ParamField>
+
+<ParamField path="validate_url" type="bool" default="False">
+  Check that a remote URL is reachable at construction time.
+</ParamField>
+
+<ParamField path="properties" type="dict | None">
+  Additional JSON-LD properties to set on the entity (e.g. `{"name": "My File"}`).
+</ParamField>
+
+<ParamField path="record_size" type="bool" default="False">
+  Compute and store the file size in bytes as `contentSize`.
+</ParamField>
+
+<ResponseField name="return" type="File">
+  The newly created `File` entity.
+</ResponseField>
+
+```python
+f = crate.add_file("data/results.csv", properties={"name": "Analysis results"})
+f["description"] = "CSV output from the pipeline"
+```
+
+---
+
+### `add_dataset`
+
+```python
+crate.add_dataset(
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+)
+```
+
+Register a directory as a `Dataset` data entity. `add_directory` is an alias for this method.
+
+<ParamField path="source" type="str | Path | None">
+  Local filesystem path or URL of the source directory.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None">
+  Relative destination path inside the crate.
+</ParamField>
+
+<ParamField path="fetch_remote" type="bool" default="False">
+  Fetch the remote dataset during `write`.
+</ParamField>
+
+<ParamField path="validate_url" type="bool" default="False">
+  Validate a remote URL at construction time.
+</ParamField>
+
+<ParamField path="properties" type="dict | None">
+  Additional JSON-LD properties.
+</ParamField>
+
+<ResponseField name="return" type="Dataset">
+  The newly created `Dataset` entity.
+</ResponseField>
+
+```python
+ds = crate.add_dataset("data/samples/", dest_path="samples")
+# add_directory is an exact alias:
+ds = crate.add_directory("data/samples/", dest_path="samples")
+```
+
+---
+
+### `add_subcrate`
+
+```python
+crate.add_subcrate(
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+)
+```
+
+Register a nested RO-Crate as a `Subcrate` entity (a `Dataset` whose `conformsTo` points to an RO-Crate profile). The inner crate is loaded lazily on first access via `.get_crate()`.
+
+<ParamField path="source" type="str | Path | None">
+  Local path to the nested crate directory or its URL.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None">
+  Destination path inside the parent crate.
+</ParamField>
+
+<ParamField path="properties" type="dict | None">
+  Additional JSON-LD properties.
+</ParamField>
+
+<ResponseField name="return" type="Subcrate">
+  The newly created `Subcrate` entity.
+</ResponseField>
+
+---
+
+### `add_tree`
+
+```python
+crate.add_tree(source, dest_path=None, properties=None)
+```
+
+Recursively add a directory and all of its contents as data entities. Each directory becomes a `Dataset` with `hasPart` links to its immediate children; each file becomes a `File`. Only one level of `hasPart` is recorded per dataset (children recurse independently).
+
+<ParamField path="source" type="str | Path">
+  The local directory to walk. Must exist and be non-empty.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None">
+  Destination path for the top-level dataset.
+</ParamField>
+
+<ParamField path="properties" type="dict | None">
+  Properties applied only to the top-level dataset entity.
+</ParamField>
+
+<ResponseField name="return" type="Dataset">
+  The top-level `Dataset` entity representing `source`.
+</ResponseField>
+
+```python
+top = crate.add_tree("pipeline/", dest_path="pipeline")
+# All subdirectories and files are now registered with hasPart linkage
+```
+
+---
+
+### `add_workflow`
+
+```python
+crate.add_workflow(
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+    main=False,
+    lang="cwl",
+    lang_version=None,
+    gen_cwl=False,
+    cls=ComputationalWorkflow,
+    record_size=False,
+)
+```
+
+Add a computational workflow file and associate it with a `ComputerLanguage` entity. Optionally marks the workflow as the crate's main entity and adds the Workflow RO-Crate profile to the metadata's `conformsTo`.
+
+<ParamField path="source" type="str | Path | None">
+  Path or URL to the workflow file.
+</ParamField>
+
+<ParamField path="dest_path" type="str | Path | None">
+  Destination path inside the crate.
+</ParamField>
+
+<ParamField path="main" type="bool" default="False">
+  When `True`, sets this workflow as `crate.mainEntity` and adds the Workflow
+  RO-Crate profile URI to `conformsTo`.
+</ParamField>
+
+<ParamField path="lang" type='str | ComputerLanguage' default='"cwl"'>
+  The workflow language. Built-in string aliases include `"cwl"`, `"galaxy"`,
+  `"nextflow"`, `"snakemake"`, and `"knime"`. Alternatively pass an existing
+  `ComputerLanguage` entity.
+</ParamField>
+
+<ParamField path="lang_version" type="str | None">
+  Version string for the workflow language (e.g. `"v1.2"`).
+</ParamField>
+
+<ParamField path="gen_cwl" type="bool" default="False">
+  For Galaxy workflows: generate an abstract CWL description and add it as a
+  `WorkflowDescription` linked via `subjectOf`. Raises `ValueError` for other
+  languages.
+</ParamField>
+
+<ParamField path="cls" type="type" default="ComputationalWorkflow">
+  The Python class to instantiate. Override to use `WorkflowDescription` or a
+  custom subclass.
+</ParamField>
+
+<ParamField path="record_size" type="bool" default="False">
+  Record `contentSize` on the workflow entity.
+</ParamField>
+
+<ResponseField name="return" type="ComputationalWorkflow">
+  The newly created workflow entity.
+</ResponseField>
+
+```python
+wf = crate.add_workflow(
+    "workflow.cwl",
+    main=True,
+    lang="cwl",
+    lang_version="v1.2",
+    properties={"name": "My analysis pipeline"},
+)
+```
+
+---
+
+## Adding Test Entities
+
+### `add_test_suite`
+
+```python
+crate.add_test_suite(
+    identifier=None,
+    name=None,
+    main_entity=None,
+    properties=None,
+)
+```
+
+Create a `TestSuite` entity and attach it to the root dataset via `mentions` (or `about` when no main entity is set).
+
+<ParamField path="identifier" type="str | None">
+  The `@id` for the suite (e.g. `"#test-1"`). Auto-generated if omitted.
+</ParamField>
+
+<ParamField path="name" type="str | None">
+  Human-readable name. Defaults to the `@id` without the leading `#`.
+</ParamField>
+
+<ParamField path="main_entity" type="Entity | None">
+  The workflow this suite tests. Falls back to `crate.mainEntity` if not set.
+</ParamField>
+
+<ParamField path="properties" type="dict | None">
+  Additional JSON-LD properties.
+</ParamField>
+
+<ResponseField name="return" type="TestSuite">
+  The new `TestSuite` entity.
+</ResponseField>
+
+---
+
+### `add_test_instance`
+
+```python
+crate.add_test_instance(
+    suite,
+    url,
+    resource="",
+    service="jenkins",
+    identifier=None,
+    name=None,
+    properties=None,
+)
+```
+
+Create a `TestInstance` within an existing `TestSuite`.
+
+<ParamField path="suite" type="TestSuite | str">
+  The parent `TestSuite` entity or its `@id`.
+</ParamField>
+
+<ParamField path="url" type="str">
+  The CI service base URL.
+</ParamField>
+
+<ParamField path="resource" type="str" default='""'>
+  The resource path on the CI service (e.g. `"job/MyJob"`).
+</ParamField>
+
+<ParamField path="service" type='str | TestService' default='"jenkins"'>
+  The CI service type. Built-in string aliases: `"jenkins"`, `"travis"`,
+  `"github"`. Pass an existing `TestService` entity for full control.
+</ParamField>
+
+<ParamField path="identifier" type="str | None">
+  The `@id` for this instance. Auto-generated if omitted.
+</ParamField>
+
+<ParamField path="name" type="str | None">
+  Human-readable name.
+</ParamField>
+
+<ResponseField name="return" type="TestInstance">
+  The new `TestInstance` entity.
+</ResponseField>
+
+---
+
+### `add_test_definition`
+
+```python
+crate.add_test_definition(
+    suite,
+    source=None,
+    dest_path=None,
+    fetch_remote=False,
+    validate_url=False,
+    properties=None,
+    engine="planemo",
+    engine_version=None,
+    record_size=False,
+)
+```
+
+Add a `TestDefinition` file to an existing `TestSuite`.
+
+<ParamField path="suite" type="TestSuite | str">
+  The parent `TestSuite` entity or its `@id`.
+</ParamField>
+
+<ParamField path="engine" type='str | SoftwareApplication' default='"planemo"'>
+  The test engine. Built-in alias: `"planemo"`. Pass an existing
+  `SoftwareApplication` to use a custom engine.
+</ParamField>
+
+<ParamField path="engine_version" type="str | None">
+  Version of the test engine to record as `engineVersion`.
+</ParamField>
+
+<ResponseField name="return" type="TestDefinition">
+  The new `TestDefinition` entity.
+</ResponseField>
+
+```python
+suite = crate.add_test_suite(name="Integration tests")
+instance = crate.add_test_instance(suite, url="https://ci.example.org", service="github")
+definition = crate.add_test_definition(suite, "tests/test_wf.yml", engine="planemo")
+```
+
+---
+
+## Adding Workflow Provenance Entities
+
+### `add_formal_parameter`
+
+```python
+crate.add_formal_parameter(
+    name,
+    additionalType,
+    identifier=None,
+    description=None,
+    valueRequired=False,
+    defaultValue=None,
+    properties=None,
+)
+```
+
+Create a `FormalParameter` contextual entity describing an input or output slot of a workflow. The entity automatically receives `conformsTo` pointing to the BioSchemas FormalParameter 1.0-RELEASE profile.
+
+<ParamField path="name" type="str">
+  The parameter name (e.g. `"input_file"`).
+</ParamField>
+
+<ParamField path="additionalType" type="str">
+  The schema.org or BioSchemas type of the parameter value (e.g.
+  `"File"`, `"Text"`, `"Integer"`).
+</ParamField>
+
+<ParamField path="identifier" type="str | None">
+  The `@id` for the entity. Auto-generated if omitted.
+</ParamField>
+
+<ParamField path="description" type="str | None">
+  Human-readable description of the parameter.
+</ParamField>
+
+<ParamField path="valueRequired" type="bool" default="False">
+  Whether a value must be supplied for this parameter.
+</ParamField>
+
+<ParamField path="defaultValue" type="Any | None">
+  The default value when none is provided.
+</ParamField>
+
+<ResponseField name="return" type="ContextEntity">
+  The new `FormalParameter` entity.
+</ResponseField>
+
+```python
+param = crate.add_formal_parameter(
+    "input_file",
+    additionalType="File",
+    description="The input FASTQ file",
+    valueRequired=True,
+)
+workflow_entity.append_to("input", param)
+```
+
+---
+
+### `add_action`
+
+```python
+crate.add_action(
+    instrument,
+    identifier=None,
+    object=None,
+    result=None,
+    properties=None,
+)
+```
+
+Create a `CreateAction` contextual entity to describe a workflow run. The `@type` defaults to `"CreateAction"` but can be overridden via `properties`.
+
+<ParamField path="instrument" type="Entity">
+  The entity that was executed (typically the workflow).
+</ParamField>
+
+<ParamField path="identifier" type="str | None">
+  The `@id` for the action. Auto-generated if omitted.
+</ParamField>
+
+<ParamField path="object" type="Entity | list[Entity] | None">
+  Input entities consumed by the action.
+</ParamField>
+
+<ParamField path="result" type="Entity | list[Entity] | None">
+  Output entities produced by the action.
+</ParamField>
+
+<ResponseField name="return" type="ContextEntity">
+  The new action entity.
+</ResponseField>
+
+---
+
+## JSON-LD Patch Methods
+
+### `add_jsonld`
+
+```python
+crate.add_jsonld(jsonld)
+```
+
+Add a raw JSON-LD dict as a new `ContextEntity`. Both `@id` and `@type` must be present.
+
+<ParamField path="jsonld" type="dict">
+  A JSON-LD dictionary. Must contain `@id` and `@type`. The `@id` key is
+  consumed (popped) internally.
+</ParamField>
+
+<ResponseField name="return" type="ContextEntity">
+  The created entity.
+</ResponseField>
+
+Raises `ValueError` if the dict is empty, missing required keys, or if an entity with the same `@id` already exists.
+
+---
+
+### `update_jsonld`
+
+```python
+crate.update_jsonld(jsonld)
+```
+
+Patch an existing entity from a JSON-LD dict. Only `@id` is required; all other `@`-prefixed keys are stripped before updating.
+
+<ParamField path="jsonld" type="dict">
+  A JSON-LD dictionary with at minimum `@id`. Any keys starting with `@`
+  (other than `@id`) are ignored.
+</ParamField>
+
+<ResponseField name="return" type="Entity">
+  The updated entity.
+</ResponseField>
+
+Raises `ValueError` if the dict is empty, `@id` is missing, or the entity is not found.
+
+---
+
+### `add_or_update_jsonld`
+
+```python
+crate.add_or_update_jsonld(jsonld)
+```
+
+Idempotent upsert: calls `add_jsonld` if the entity does not yet exist, or `update_jsonld` if it does. Requires `@id`; `@type` is only required when adding.
+
+<ResponseField name="return" type="Entity | ContextEntity">
+  The added or updated entity.
+</ResponseField>
+
+```python
+crate.add_or_update_jsonld({
+    "@id": "#tool-v2",
+    "@type": "SoftwareApplication",
+    "name": "My Tool",
+    "version": "2.0",
+})
+```
+
+---
+
+## Retrieval Methods
+
+### `dereference` / `get`
+
+```python
+crate.dereference(entity_id, default=None)
+crate.get(entity_id, default=None)  # alias
+```
+
+Look up an entity by its `@id`. The ID is normalised to an arcp URI before lookup so `"paper.pdf"` and `"arcp://uuid,.../paper.pdf"` both resolve to the same entity. For subcrate entities, the lookup recurses into the nested crate.
+
+<ParamField path="entity_id" type="str">
+  The `@id` to resolve.
+</ParamField>
+
+<ParamField path="default" type="Any" default="None">
+  Returned when no entity is found.
+</ParamField>
+
+<ResponseField name="return" type="Entity | Any">
+  The matching entity, or `default`.
+</ResponseField>
+
+---
+
+### `get_entities`
+
+```python
+crate.get_entities()
+```
+
+Return a view of **all** entities in the crate — default entities, data entities, and contextual entities combined.
+
+<ResponseField name="return" type="dict_values[Entity]">
+  All registered entities.
+</ResponseField>
+
+---
+
+### `get_by_type`
+
+```python
+crate.get_by_type(type_, exact=False)
+```
+
+Filter entities by `@type`.
+
+<ParamField path="type_" type="str | list[str]">
+  One or more type names. A list requires all types to be present (subset
+  match) unless `exact=True`.
+</ParamField>
+
+<ParamField path="exact" type="bool" default="False">
+  When `True`, the entity's type set must exactly equal `type_`. When `False`
+  (default), `type_` only needs to be a subset.
+</ParamField>
+
+<ResponseField name="return" type="list[Entity]">
+  Matching entities.
+</ResponseField>
+
+```python
+persons = crate.get_by_type("Person")
+workflows = crate.get_by_type(["File", "ComputationalWorkflow"])
+```
+
+---
+
+### `__contains__`
+
+```python
+entity_id in crate
+```
+
+Test membership by `@id` string. The ID is canonicalised before the check.
+
+```python
+if "paper.pdf" in crate:
+    print("registered")
+```
+
+---
+
+## Writing
+
+### `write`
+
+```python
+crate.write(base_path)
+```
+
+Serialise the crate to a directory. Creates `base_path` if it does not exist. All data entities are copied or written to their `dest_path` locations and `ro-crate-metadata.json` is generated.
+
+<ParamField path="base_path" type="str | Path">
+  The target directory.
+</ParamField>
+
+```python
+crate.write("/output/my-crate")
+```
+
+---
+
+### `write_zip`
+
+```python
+crate.write_zip(out_path)
+```
+
+Write the crate as a ZIP archive.
+
+<ParamField path="out_path" type="str | Path">
+  Output path for the ZIP file (e.g. `"my-crate.zip"`).
+</ParamField>
+
+<ResponseField name="return" type="Path">
+  The resolved path of the written ZIP file.
+</ResponseField>
+
+```python
+crate.write_zip("exports/my-crate.zip")
+```
+
+---
+
+### `write_detached`
+
+```python
+crate.write_detached(metadata_path)
+```
+
+Write only the metadata file as a detached crate descriptor, without copying any payload files. The filename should follow the pattern `*-ro-crate-metadata.json`.
+
+<ParamField path="metadata_path" type="str | Path">
+  Destination path for the metadata JSON file.
+</ParamField>
+
+<Warning>
+  A warning is emitted if `metadata_path` does not match the expected
+  `*-ro-crate-metadata.json` naming pattern.
+</Warning>
+
+---
+
+### `stream_zip`
+
+```python
+crate.stream_zip(chunk_size=8192)
+```
+
+A generator that yields the crate as a stream of raw bytes in ZIP format. Useful for HTTP streaming responses without writing a temporary file to disk.
+
+<ParamField path="chunk_size" type="int" default="8192">
+  The number of bytes per yielded chunk.
+</ParamField>
+
+<ResponseField name="return" type="Generator[bytes, None, None]">
+  Yields byte chunks that together form a valid ZIP archive.
+</ResponseField>
+
+```python
+# Streaming in a Flask response
+from flask import Response
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate("my-crate/")
+
+@app.route("/download")
+def download():
+    return Response(crate.stream_zip(), mimetype="application/zip")
+```
+
+---
+
+## Utility Methods
+
+### `resolve_id`
+
+```python
+crate.resolve_id(id_)
+```
+
+Resolve a relative or absolute `@id` to a canonical arcp URI. Relative paths are joined against `crate.arcp_base_uri`.
+
+<ParamField path="id_" type="str">
+  The `@id` to resolve.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  The canonical arcp URI (trailing slash stripped).
+</ResponseField>
+
+---
+
+## Properties
+
+<ResponseField name="root_dataset" type="RootDataset">
+  The single `RootDataset` entity (`@id: "./"`). Assigned automatically when
+  `add` receives a `RootDataset`.
+</ResponseField>
+
+<ResponseField name="metadata" type="Metadata">
+  The `Metadata` entity (`ro-crate-metadata.json`). Assigned automatically when
+  `add` receives a `Metadata`.
+</ResponseField>
+
+<ResponseField name="preview" type="Preview | None">
+  The optional `Preview` entity (`ro-crate-preview.html`). `None` when no
+  preview has been added.
+</ResponseField>
+
+<ResponseField name="version" type="str">
+  The RO-Crate spec version string, delegated to `metadata.version`.
+</ResponseField>
+
+<ResponseField name="data_entities" type="list[Entity]">
+  All registered entities that have a `write` method (i.e. files and datasets),
+  excluding `RootDataset`, `Metadata`, and `Preview`.
+</ResponseField>
+
+<ResponseField name="contextual_entities" type="list[Entity]">
+  All registered entities without a `write` method (i.e. `ContextEntity`
+  subclasses like `Person`, `ComputerLanguage`, etc.), excluding the three
+  default entities.
+</ResponseField>
+
+<ResponseField name="default_entities" type="list[Entity]">
+  The three mandatory crate entities: `RootDataset`, `Metadata`, and `Preview`
+  (when present).
+</ResponseField>
+
+<ResponseField name="subcrate_entities" type="list[Subcrate]">
+  All entities that are `Subcrate` instances.
+</ResponseField>
+
+<ResponseField name="test_suites" type="list[TestSuite]">
+  All `TestSuite` entities referenced from the root dataset's `mentions` or
+  `about`, including legacy suites attached to `test_dir`.
+</ResponseField>
+
+<ResponseField name="test_dir" type="Dataset | None">
+  The dataset entity with `@id: "test"`, if present and typed as `Dataset`.
+</ResponseField>
+
+<ResponseField name="examples_dir" type="Dataset | None">
+  The dataset entity with `@id: "examples"`, if present and typed as `Dataset`.
+</ResponseField>
+
+<ResponseField name="source" type="Path | dict | str | None">
+  The resolved source that was used to load the crate. For ZIP inputs this is
+  the path to the extracted temporary directory.
+</ResponseField>
+
+<ResponseField name="uuid" type="uuid.UUID">
+  The UUID assigned to this crate instance at construction time.
+</ResponseField>
+
+<ResponseField name="arcp_base_uri" type="str">
+  The arcp base URI derived from `uuid`, e.g.
+  `"arcp://uuid,3fa85f64-5717-4562-b3fc-2c963f66afa6/"`.
+</ResponseField>
+
+<ResponseField name="mode" type="Mode">
+  The crate's operating mode: `Mode.CREATE`, `Mode.INIT`, or `Mode.READ`.
+</ResponseField>
+
+### Delegated root dataset properties
+
+The following properties are thin wrappers over the identically-named properties of `root_dataset` and support both get and set:
+
+| Property | Schema.org term |
+|---|---|
+| `name` | `name` |
+| `description` | `description` |
+| `keywords` | `keywords` |
+| `license` | `license` |
+| `creator` | `creator` |
+| `publisher` | `publisher` |
+| `mainEntity` | `mainEntity` |
+| `datePublished` | `datePublished` |
+| `isBasedOn` | `isBasedOn` |
+| `image` | `image` |
+| `creativeWorkStatus` | `creativeWorkStatus` |
+
+```python
+crate.name = "My Analysis Crate"
+crate.license = {"@id": "https://spdx.org/licenses/Apache-2.0"}
+crate.datePublished = "2024-06-01"
+print(crate.creator)
+```
+
+---
+
+## Complete example
+
+```python
+from rocrate.rocrate import ROCrate
+
+# Create a new crate
+crate = ROCrate()
+crate.name = "RNA-seq Analysis"
+crate.description = "Full pipeline for differential expression analysis"
+
+# Add data files
+input_file = crate.add_file("data/reads.fastq", properties={"name": "Raw reads"})
+output_file = crate.add_file("results/counts.tsv", properties={"name": "Gene counts"})
+
+# Add a workflow
+workflow = crate.add_workflow(
+    "workflow.cwl",
+    main=True,
+    lang="cwl",
+    properties={"name": "CWL RNA-seq pipeline"},
+)
+
+# Add a formal parameter
+param = crate.add_formal_parameter(
+    "reads", additionalType="File", valueRequired=True
+)
+workflow.append_to("input", param)
+
+# Add a test suite
+suite = crate.add_test_suite(name="Smoke tests")
+crate.add_test_instance(suite, url="https://github.com/org/repo", service="github")
+crate.add_test_definition(suite, "tests/test_wf.yml", engine="planemo")
+
+# Serialise
+crate.write("/output/rna-seq-crate")
+crate.write_zip("/output/rna-seq-crate.zip")
+```

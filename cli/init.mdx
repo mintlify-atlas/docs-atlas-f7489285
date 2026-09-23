@@ -1,0 +1,131 @@
+---
+title: "rocrate init: Initialize a Directory as an RO-Crate"
+sidebarTitle: "init"
+description: "rocrate init scans a directory tree and creates ro-crate-metadata.json listing all files and directories as File and Dataset entities."
+---
+
+The `rocrate init` command turns any ordinary directory into an RO-Crate by scanning its tree and writing a conformant `ro-crate-metadata.json` file at the top level. Every file it finds is registered as a `File` entity; every subdirectory becomes a `Dataset` entity. The command is designed to be run once to bootstrap a crate, though it can be re-run at any time to regenerate the metadata.
+
+## What `rocrate init` does
+
+When you run `rocrate init` inside a directory (or point it at one with `-c`), the library:
+
+1. Walks the entire directory tree recursively.
+2. Creates a new `ROCrate` object that represents the root data entity (`./`).
+3. Registers every discovered file as a `File` entity and every discovered subdirectory as a `Dataset` entity.
+4. Writes `ro-crate-metadata.json` at the crate root.
+5. Optionally generates `ro-crate-preview.html` when `--gen-preview` is supplied.
+
+<Warning>
+If `ro-crate-metadata.json` already exists in the target directory, `rocrate init` will **overwrite** it. Any custom metadata you added by hand or through `rocrate add` will be lost. Run `rocrate init` only when you want to rebuild the metadata from scratch.
+</Warning>
+
+## Help output
+
+```console
+$ rocrate init --help
+Usage: rocrate init [OPTIONS]
+
+Options:
+  --gen-preview         Generate a HTML preview file for the crate.
+  -e, --exclude NAME    Exclude files or directories from the metadata file.
+                        NAME may be a single name or a comma-separated list of
+                        names.
+  --crate-version VERSION
+                        Version of the RO-Crate standard to initialize the
+                        crate with.
+  -c, --crate-dir PATH  The path to the root data entity of the crate.
+                        Defaults to the current working directory.
+  --help                Show this message and exit.
+```
+
+## Options reference
+
+<ParamField body="--gen-preview" type="flag" default="false">
+  Generate an `ro-crate-preview.html` human-readable HTML file alongside the metadata JSON. Useful when you want a quick visual overview of the crate's contents.
+</ParamField>
+
+<ParamField body="-e / --exclude NAME" type="string">
+  A single filename or a comma-separated list of filenames to omit from the metadata. The comparison is by name only (not path), so any file or directory with a matching name anywhere in the tree is excluded.
+
+  ```bash
+  # Exclude a single name
+  rocrate init -e .git
+
+  # Exclude multiple names in one flag
+  rocrate init -e .git,__pycache__,.DS_Store
+  ```
+</ParamField>
+
+<ParamField body="-c / --crate-dir PATH" type="path" default="current working directory">
+  The root directory of the crate to initialize. Defaults to `os.getcwd()` so you can simply `cd` into the target directory and run `rocrate init` with no arguments.
+</ParamField>
+
+<ParamField body="--crate-version VERSION" type="string" default="1.2">
+  The RO-Crate specification version to target. Accepted values are `1.0`, `1.1`, and `1.2`. This controls which context URL is embedded in the `@context` field of the metadata file.
+</ParamField>
+
+## Full walkthrough example
+
+The following example is based on the `ro-crate-galaxy-sortchangecase` test dataset included in the `ro-crate-py` repository. It demonstrates the typical init-then-enrich workflow.
+
+<Steps>
+  <Step title="Navigate to the target directory">
+    ```bash
+    cd test/test-data/ro-crate-galaxy-sortchangecase
+    ```
+
+    The directory already contains a Galaxy workflow (`sort-and-change-case.ga`), a Planemo test file, and a pre-existing `ro-crate-metadata.json`. To simulate a fresh start, remove the metadata file:
+
+    ```bash
+    rm ro-crate-metadata.json
+    ```
+  </Step>
+
+  <Step title="Initialize the crate">
+    ```bash
+    rocrate init
+    ```
+
+    This creates a new `ro-crate-metadata.json` listing every file and subdirectory it finds. The Galaxy workflow is registered at this point as a plain `File`:
+
+    ```json
+    {
+      "@id": "sort-and-change-case.ga",
+      "@type": "File"
+    }
+    ```
+
+    The workflow is not yet recognized as a `ComputationalWorkflow`; that upgrade is done with `rocrate add workflow` (see the [add reference](/cli/add)).
+  </Step>
+
+  <Step title="Generate a preview (optional)">
+    Re-run `init` with `--gen-preview` to also produce a human-readable HTML snapshot:
+
+    ```bash
+    rocrate init --gen-preview
+    ```
+
+    This writes both `ro-crate-metadata.json` and `ro-crate-preview.html` to the crate root.
+  </Step>
+
+  <Step title="Exclude build artefacts">
+    If your directory contains files that should not be listed in the metadata, pass them to `--exclude`:
+
+    ```bash
+    rocrate init -e .git,__pycache__,.DS_Store
+    ```
+  </Step>
+
+  <Step title="Target a different directory">
+    You can initialize any directory without changing your working directory:
+
+    ```bash
+    rocrate init -c /path/to/my-workflow-project
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+After running `rocrate init`, use `rocrate add workflow`, `rocrate add test-suite`, and the other `add` subcommands to enrich the plain metadata entries with richer types and properties. See the [rocrate add](/cli/add) reference for details.
+</Tip>

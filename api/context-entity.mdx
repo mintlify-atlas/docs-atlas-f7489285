@@ -1,0 +1,177 @@
+---
+title: "ContextEntity — Base Class for Contextual Entities"
+sidebarTitle: "ContextEntity"
+description: "ContextEntity is the base class for non-file entities in an RO-Crate — people, organizations, events, software, and custom types."
+---
+
+Every RO-Crate is built from two kinds of entities: **data entities** (files and directories that live inside the crate) and **contextual entities** (everything else — people, organizations, events, licenses, software, and any other concept described in the metadata). `ContextEntity` is the Python base class for all contextual entities. It extends `Entity` and does not carry any file-writing behaviour; it exists purely as a metadata record serialized into `ro-crate-metadata.json`.
+
+## Class overview
+
+```python
+from rocrate.model.contextentity import ContextEntity
+```
+
+`ContextEntity` extends `Entity` and inherits all property-access, comparison, and serialization behaviour from it. The class body itself is intentionally minimal; all logic lives in `Entity`. Typed subclasses — `Person`, `ComputerLanguage`, `SoftwareApplication`, `TestSuite`, `TestInstance`, `TestService`, `TestDefinition`, and `CreativeWork` — all extend `ContextEntity` and add domain-specific typed defaults and properties.
+
+## Constructor
+
+```python
+ContextEntity(crate, identifier=None, properties=None)
+```
+
+<ParamField path="crate" type="ROCrate" required>
+  The `ROCrate` instance this entity belongs to. The entity uses the crate to
+  resolve cross-references between entities.
+</ParamField>
+
+<ParamField path="identifier" type="str" default="auto-generated #uuid4">
+  The `@id` for this entity in the JSON-LD graph. For contextual entities this
+  is usually one of:
+
+  - An **absolute URI** pointing to an authoritative record — an ORCID
+    (`https://orcid.org/0000-0002-1825-0097`), a DOI
+    (`https://doi.org/10.1093/bioinformatics/bts480`), or a schema.org URL
+    (`https://schema.org/Person`).
+  - A **`#fragment` identifier** for entities that are local to the crate, e.g.
+    `#bh2021`, `#compss`.
+
+  If omitted, a random `#uuid4` fragment is generated automatically.
+</ParamField>
+
+<ParamField path="properties" type="dict" default="{}">
+  An optional dictionary of JSON-LD properties to set on the entity immediately.
+  Keys beginning with `@` (such as `@type`) are written directly into the
+  underlying JSON-LD record; all other keys go through the normal entity
+  setter, which converts `Entity` values to `{"@id": ...}` references
+  automatically.
+</ParamField>
+
+## ID formatting
+
+Unlike `Dataset` (which appends a trailing `/` to directory identifiers), `ContextEntity.format_id` returns the identifier unchanged:
+
+```python
+entity = ContextEntity(crate, "https://schema.org/Event")
+print(entity.id)  # https://schema.org/Event  — no trailing slash
+```
+
+This matches the RO-Crate specification requirement that contextual entity identifiers are either absolute URIs or `#fragment` identifiers.
+
+## Adding an entity to a crate
+
+Constructing a `ContextEntity` does **not** add it to the crate. Call `crate.add()` to register it:
+
+```python
+from rocrate.rocrate import ROCrate
+from rocrate.model.contextentity import ContextEntity
+
+crate = ROCrate()
+hackathon = crate.add(ContextEntity(crate, "#bh2021", properties={
+    "@type": "Hackathon",
+    "name": "Biohackathon 2021",
+    "location": "Barcelona, Spain",
+    "startDate": "2021-11-08",
+    "endDate": "2021-11-12"
+}))
+```
+
+<Note>
+  The `@type` key is passed in `properties` and written verbatim into the
+  JSON-LD record. Any RO-Crate context type is valid — `Event`, `Organization`,
+  `Hackathon`, `Place`, and so on.
+</Note>
+
+`crate.add()` returns the entity you passed in, so you can capture it in a
+variable and use it to build cross-entity links straight away.
+
+## Multiple types
+
+An entity can carry more than one `@type` by passing a list:
+
+```python
+workflow = crate.add(ContextEntity(crate, "workflow.py", properties={
+    "@type": ["File", "SoftwareSourceCode"],
+    "name": "Analysis pipeline",
+    "programmingLanguage": "Python"
+}))
+```
+
+<Tip>
+  For `["File", "SoftwareSourceCode", "ComputationalWorkflow"]` entities, prefer
+  `crate.add_workflow()` which handles the language linking and profile
+  conformance automatically.
+</Tip>
+
+## JSON-LD shorthand with `add_jsonld`
+
+When you already have a JSON-LD dict — for instance loaded from a patch file — you can add it directly without instantiating `ContextEntity` manually:
+
+```python
+crate.add_jsonld({
+    "@id": "https://orcid.org/0000-0000-0000-0000",
+    "@type": "Person",
+    "name": "Alice Doe"
+})
+```
+
+<Warning>
+  `add_jsonld` raises `ValueError` if the entity `@id` is already present in
+  the crate or if `@id` / `@type` are missing. Use `crate.add_or_update_jsonld`
+  if you want upsert behaviour.
+</Warning>
+
+## Typed subclasses
+
+The following typed subclasses are available under `rocrate.model`:
+
+| Class | `@type` | Import path |
+|---|---|---|
+| `Person` | `Person` | `rocrate.model.person` |
+| `ComputerLanguage` | `ComputerLanguage` | `rocrate.model.computerlanguage` |
+| `SoftwareApplication` | `SoftwareApplication` | `rocrate.model.softwareapplication` |
+| `CreativeWork` | `CreativeWork` | `rocrate.model.creativework` |
+| `TestSuite` | `TestSuite` | `rocrate.model.testsuite` |
+| `TestInstance` | `TestInstance` | `rocrate.model.testinstance` |
+| `TestService` | `TestService` | `rocrate.model.testservice` |
+| `TestDefinition` | `TestDefinition` | `rocrate.model.testdefinition` |
+
+Each subclass sets a default `@type` automatically via `_empty()`, so you do not need to include `"@type"` in `properties` when using a typed subclass.
+
+## Iterating over contextual entities
+
+```python
+crate = ROCrate("exp_crate")
+for entity in crate.contextual_entities:
+    print(entity.id, entity.type)
+```
+
+Contextual entities are those in the crate's entity map that are **not** data entities (`File` or `Dataset`), the root dataset, or the metadata descriptor.
+
+## Complete example — event entity
+
+```python
+from rocrate.rocrate import ROCrate
+from rocrate.model.contextentity import ContextEntity
+
+crate = ROCrate()
+
+# Add a data file
+paper = crate.add_file("paper.pdf", properties={"name": "Research paper"})
+
+# Describe the event at which the paper was presented
+conf = crate.add(ContextEntity(crate, "https://example.org/conf2024", properties={
+    "@type": "Event",
+    "name": "Example Conference 2024",
+    "location": "Geneva, Switzerland",
+    "startDate": "2024-06-01",
+    "endDate": "2024-06-03"
+}))
+
+# Link the paper to the event
+paper["about"] = conf
+
+crate.write("output_crate")
+```
+
+After `crate.write`, the `ro-crate-metadata.json` will contain both entities connected by the `about` relationship.

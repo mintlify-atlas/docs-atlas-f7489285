@@ -1,0 +1,311 @@
+---
+title: "ComputerLanguage — Workflow Language Contextual Entity"
+sidebarTitle: "ComputerLanguage"
+description: "ComputerLanguage describes a workflow programming language in a Workflow RO-Crate. Built-in factories cover CWL, Galaxy, Nextflow, and more."
+---
+
+A [Workflow RO-Crate](https://w3id.org/workflowhub/workflow-ro-crate/1.0) must declare the programming language of its main computational workflow. The `ComputerLanguage` class represents that declaration as a contextual entity. It carries the language's human-readable name, an authoritative URI identifier, a homepage URL, and an optional version string. Rather than constructing `ComputerLanguage` objects manually, you typically call one of the built-in factory functions — `cwl`, `galaxy`, `nextflow`, and others — which fill in the canonical identifiers for you.
+
+## Class overview
+
+```python
+from rocrate.model.computerlanguage import ComputerLanguage
+```
+
+`ComputerLanguage` extends `ContextEntity` and sets `@type` to `"ComputerLanguage"` automatically. It adds typed Python properties (`name`, `alternateName`, `identifier`, `url`, `version`) as thin getters/setters over the underlying JSON-LD record.
+
+## Constructor
+
+```python
+ComputerLanguage(crate, identifier=None, properties=None)
+```
+
+<ParamField path="crate" type="ROCrate" required>
+  The `ROCrate` instance this entity belongs to.
+</ParamField>
+
+<ParamField path="identifier" type="str" default="auto-generated #uuid4">
+  The JSON-LD `@id` for this entity. For the standard workflow languages this
+  is a `https://w3id.org/workflowhub/workflow-ro-crate#<name>` URI (set
+  automatically by the factory functions). For custom or unsupported languages,
+  use a `#fragment` identifier such as `"#mylang"`.
+</ParamField>
+
+<ParamField path="properties" type="dict" default="{}">
+  JSON-LD properties. You do not need to include `"@type"` — it is pre-set to
+  `"ComputerLanguage"`.
+</ParamField>
+
+## Properties
+
+Each property has a getter and a setter that read from / write to the underlying JSON-LD record.
+
+<ResponseField name="name" type="str">
+  Human-readable language name, e.g. `"Common Workflow Language"` or
+  `"Nextflow"`.
+
+  ```python
+  lang.name = "Common Workflow Language"
+  print(lang.name)  # "Common Workflow Language"
+  ```
+</ResponseField>
+
+<ResponseField name="alternateName" type="str">
+  Short abbreviation used alongside the full name, e.g. `"CWL"` or `"AS"`.
+
+  ```python
+  lang.alternateName = "CWL"
+  ```
+</ResponseField>
+
+<ResponseField name="identifier" type="dict or str">
+  An authoritative identifier URI for the language — typically a `{"@id": url}`
+  dict pointing to a specification or DOI. Read back as the linked entity (or
+  raw dict if not in the crate).
+
+  ```python
+  lang.identifier = {"@id": "https://w3id.org/cwl/"}
+  ```
+</ResponseField>
+
+<ResponseField name="url" type="dict or str">
+  Homepage URL for the language. Stored as a `{"@id": url}` reference.
+
+  ```python
+  lang.url = {"@id": "https://www.commonwl.org/"}
+  ```
+</ResponseField>
+
+<ResponseField name="version" type="str">
+  Version string, e.g. `"1.2"` or `"22.10.0"`. Note that `version` is not
+  listed as a formal property in the schema.org `ComputerLanguage` definition,
+  but it is used in practice by the Workflow RO-Crate profile.
+
+  ```python
+  lang.version = "1.2"
+  ```
+</ResponseField>
+
+## Built-in factory functions
+
+All factory functions share the same signature and return a ready-to-use `ComputerLanguage` object that can be passed directly to `crate.add()` or to `add_workflow(lang=...)`.
+
+```python
+factory(crate, version=None) -> ComputerLanguage
+```
+
+<ParamField path="crate" type="ROCrate" required>
+  The `ROCrate` that will own this entity.
+</ParamField>
+
+<ParamField path="version" type="str" default="None">
+  Optional version string. When provided, the entity gains a `version` property
+  and (for CWL only) the `identifier` URI is refined to include the version.
+</ParamField>
+
+### Language reference table
+
+| Factory | `@id` | Language name | `identifier` URI | `url` |
+|---|---|---|---|---|
+| `cwl` | `…workflow-ro-crate#cwl` | Common Workflow Language | `https://w3id.org/cwl/` (or versioned) | `https://www.commonwl.org/` |
+| `galaxy` | `…workflow-ro-crate#galaxy` | Galaxy | `https://galaxyproject.org/` | `https://galaxyproject.org/` |
+| `knime` | `…workflow-ro-crate#knime` | KNIME | `https://www.knime.com/` | `https://www.knime.com/` |
+| `nextflow` | `…workflow-ro-crate#nextflow` | Nextflow | `https://www.nextflow.io/` | `https://www.nextflow.io/` |
+| `snakemake` | `…workflow-ro-crate#snakemake` | Snakemake | `https://doi.org/10.1093/bioinformatics/bts480` | `https://snakemake.readthedocs.io` |
+| `compss` | `#compss` | COMPSs Programming Model | _(none)_ | `http://compss.bsc.es/` |
+| `autosubmit` | `#autosubmit` | Autosubmit | _(none)_ | `https://autosubmit.readthedocs.io/` |
+
+The `…workflow-ro-crate` prefix expands to `https://w3id.org/workflowhub/workflow-ro-crate`.
+
+### `cwl(crate, version=None)`
+
+Common Workflow Language. When `version` is supplied the `identifier` URI
+becomes `https://w3id.org/cwl/v{version}/`.
+
+```python
+from rocrate.model.computerlanguage import cwl
+
+lang = cwl(crate, version="1.2")
+print(lang.id)           # https://w3id.org/workflowhub/workflow-ro-crate#cwl
+print(lang.name)         # Common Workflow Language
+print(lang.alternateName)# CWL
+print(lang.version)      # 1.2
+```
+
+### `galaxy(crate, version=None)`
+
+Galaxy workflow language.
+
+```python
+from rocrate.model.computerlanguage import galaxy
+
+lang = galaxy(crate, version="22.01")
+print(lang.name)    # Galaxy
+print(lang.version) # 22.01
+```
+
+### `knime(crate, version=None)`
+
+KNIME Analytics Platform workflow language.
+
+```python
+from rocrate.model.computerlanguage import knime
+
+lang = knime(crate)
+print(lang.name)  # KNIME
+```
+
+### `nextflow(crate, version=None)`
+
+Nextflow workflow language.
+
+```python
+from rocrate.model.computerlanguage import nextflow
+
+lang = nextflow(crate, version="22.10.0")
+print(lang.name)  # Nextflow
+```
+
+### `snakemake(crate, version=None)`
+
+Snakemake workflow language. The `identifier` points to the original
+publication DOI rather than a project URL.
+
+```python
+from rocrate.model.computerlanguage import snakemake
+
+lang = snakemake(crate)
+print(lang.name)  # Snakemake
+```
+
+### `compss(crate, version=None)`
+
+COMPSs Programming Model. Uses a `#compss` fragment identifier and carries a
+`citation` property pointing to the original paper.
+
+```python
+from rocrate.model.computerlanguage import compss
+
+lang = compss(crate, version="3.3")
+print(lang.id)          # #compss
+print(lang.alternateName) # COMPSs
+```
+
+### `autosubmit(crate, version=None)`
+
+Autosubmit workflow manager. Uses a `#autosubmit` fragment identifier.
+
+```python
+from rocrate.model.computerlanguage import autosubmit
+
+lang = autosubmit(crate)
+print(lang.id)            # #autosubmit
+print(lang.alternateName) # AS
+```
+
+## `LANG_MAP` — name-to-factory dictionary
+
+```python
+from rocrate.model.computerlanguage import LANG_MAP
+
+print(list(LANG_MAP.keys()))
+# ['cwl', 'galaxy', 'knime', 'nextflow', 'snakemake', 'compss', 'autosubmit']
+```
+
+`LANG_MAP` maps lowercase language name strings to their factory callables. It is used internally by `get_lang` and the CLI (`rocrate add workflow -l <name>`).
+
+## `get_lang(crate, name, version=None)` — main entry point
+
+```python
+from rocrate.model.computerlanguage import get_lang
+
+lang = get_lang(crate, "nextflow", version="22.10.0")
+```
+
+<ParamField path="crate" type="ROCrate" required>
+  The `ROCrate` that will own this entity.
+</ParamField>
+
+<ParamField path="name" type="str" required>
+  Case-insensitive language name. Must be a key in `LANG_MAP` —
+  `"cwl"`, `"galaxy"`, `"knime"`, `"nextflow"`, `"snakemake"`, `"compss"`, or
+  `"autosubmit"`. Raises `ValueError` for unrecognized names.
+</ParamField>
+
+<ParamField path="version" type="str" default="None">
+  Optional version string forwarded to the factory function.
+</ParamField>
+
+`get_lang` is the function called by `crate.add_workflow()` when its `lang` parameter is a string. The call `add_workflow(source=..., lang="nextflow", lang_version="22.10.0")` is equivalent to calling `get_lang(crate, "nextflow", version="22.10.0")` and then passing the result to `add_workflow(lang=<entity>)`.
+
+<Warning>
+  Passing an unknown language name raises `ValueError: Unknown language: <name>`.
+  Check `LANG_MAP.keys()` for the supported names, or use a pre-built
+  `ComputerLanguage` entity for unsupported languages.
+</Warning>
+
+## Using `add_workflow` with a language string
+
+```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+workflow = crate.add_workflow(
+    "sort.nf",
+    main=True,
+    lang="nextflow",
+    lang_version="22.10.0"
+)
+```
+
+## Using a custom or pre-existing language entity
+
+If your language is not in `LANG_MAP`, build a `ComputerLanguage` entity manually, add it to the crate, then pass it directly to `add_workflow`:
+
+```python
+from rocrate.rocrate import ROCrate
+from rocrate.model.computerlanguage import ComputerLanguage
+
+crate = ROCrate()
+
+my_lang = crate.add(ComputerLanguage(crate, "#mylang", properties={
+    "name": "My Custom DSL",
+    "url": {"@id": "https://example.org/mylang"},
+    "version": "0.9"
+}))
+
+workflow = crate.add_workflow(
+    "pipeline.ml",
+    main=True,
+    lang=my_lang   # pass the entity directly — bypasses LANG_MAP lookup
+)
+```
+
+<Note>
+  When `lang` is a `ComputerLanguage` entity, `add_workflow` asserts that the
+  entity already belongs to the same crate (`lang.crate is self`) and is
+  registered in the crate's entity map. Always call `crate.add(lang)` before
+  passing it to `add_workflow`.
+</Note>
+
+## Full workflow example
+
+```python
+from rocrate.rocrate import ROCrate
+from rocrate.model.computerlanguage import cwl
+
+crate = ROCrate()
+
+# Build the language entity explicitly (optional — add_workflow can do this)
+lang = crate.add(cwl(crate, version="1.2"))
+print(lang.name, lang.version)  # Common Workflow Language  1.2
+
+# Add the workflow, referencing the pre-added language entity
+workflow = crate.add_workflow(
+    "analysis.cwl",
+    main=True,
+    lang=lang
+)
+
+crate.write("my_workflow_crate")
+```

@@ -1,0 +1,87 @@
+---
+title: "ro-crate-py: Python Library for Research Object Crates"
+sidebarTitle: "Introduction"
+description: "ro-crate-py is a Python library for building and consuming RO-Crates — standards-based research data packages with JSON-LD metadata."
+---
+
+ro-crate-py is an open-source Python library that lets you create, read, and manipulate [Research Object Crates (RO-Crates)](https://w3id.org/ro/crate) — a lightweight, standards-based approach to packaging research data together with rich, machine-readable metadata. Whether you are archiving experimental results, sharing computational workflows, or publishing datasets that meet FAIR principles, ro-crate-py provides the Python API to do it correctly and efficiently.
+
+## What Is an RO-Crate?
+
+An RO-Crate is a structured directory (or zip archive) that bundles data files together with a single metadata document called `ro-crate-metadata.json`. That metadata file is a [JSON-LD](https://json-ld.org) document — meaning every property and type is grounded in a well-known vocabulary — which makes RO-Crates both human-readable and processable by linked-data tooling.
+
+Inside the metadata, entities fall into two broad categories:
+
+- **Data entities** — files (`File`) and directories (`Dataset`) that physically exist inside the crate, or remote resources referenced by URI.
+- **Contextual entities** — non-digital things described in the metadata, such as `Person`, `Organization`, `Place`, or `Hackathon`, that provide context for the data.
+
+A minimal crate on disk looks like this:
+
+```
+exp_crate/
+├── images/
+│   └── figure.svg
+├── logs/
+│   ├── log1.txt
+│   └── log2.txt
+├── paper.pdf
+├── results.csv
+└── ro-crate-metadata.json
+```
+
+The `ro-crate-metadata.json` file records the types, properties, and relationships of every entity in the crate using JSON-LD, making the package self-describing and interoperable with the broader Linked Data ecosystem.
+
+## Supported Specification Versions
+
+ro-crate-py targets the **RO-Crate 1.2** specification by default, and also fully supports the earlier **1.1** and **1.0** releases. New crates are created at version 1.2 unless you explicitly request an older version. When reading an existing crate the library detects the version automatically from the metadata descriptor.
+
+| Version | Status | Notes |
+|---------|--------|-------|
+| 1.2 | ✅ Default | Introduces detached crates and subcrates |
+| 1.1 | ✅ Supported | Stable, widely deployed |
+| 1.0 | ✅ Supported | Uses legacy `ro-crate-metadata.jsonld` filename |
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Create & Write Crates" icon="folder-plus">
+    Build an RO-Crate from scratch, add files and directories, define relationships between entities, then serialize to a directory or zip archive with a single method call.
+  </Card>
+  <Card title="Read & Consume Crates" icon="magnifying-glass">
+    Load any existing RO-Crate from a local directory, zip file, or remote URI. Iterate over all entities or filter by data vs. contextual entities, and dereference by `@id`.
+  </Card>
+  <Card title="Rich Entity Model" icon="diagram-project">
+    First-class Python classes for `File`, `Dataset`, `Person`, `ComputationalWorkflow`, and more. Add arbitrary types via `ContextEntity` with any schema.org or RO-Crate vocabulary term.
+  </Card>
+  <Card title="JSON-LD Metadata" icon="code">
+    All metadata is stored as valid JSON-LD, grounded in the RO-Crate context. Directly patch the crate from JSON-LD dictionaries using `add_jsonld`, `update_jsonld`, and `add_or_update_jsonld`.
+  </Card>
+  <Card title="Detached & Subcrates" icon="layer-group">
+    RO-Crate 1.2 detached crates (no root directory) and nested subcrates are fully supported, enabling complex hierarchical research packages and API-served metadata.
+  </Card>
+  <Card title="Command-Line Interface" icon="terminal">
+    The bundled `rocrate` CLI lets you initialize a directory tree as an RO-Crate (`rocrate init`), add workflows and datasets (`rocrate add`), and write zip archives — no Python code required.
+  </Card>
+  <Card title="Workflow Support" icon="gears">
+    Native support for [Workflow RO-Crate](https://w3id.org/workflowhub/workflow-ro-crate/) profiles. Register Galaxy, CWL, Nextflow, Snakemake, and other computational workflows with correct types and language metadata.
+  </Card>
+  <Card title="Galaxy-to-CWL Conversion" icon="arrow-right-arrow-left">
+    Optional `ga2cwl` extra adds the ability to convert Galaxy workflow files to abstract CWL representations during crate construction.
+  </Card>
+</CardGroup>
+
+## Related Resources
+
+- **PyPI package:** [https://pypi.org/project/rocrate/](https://pypi.org/project/rocrate/)
+- **RO-Crate specification:** [https://w3id.org/ro/crate](https://w3id.org/ro/crate)
+- **RO-Crate 1.2 spec:** [https://w3id.org/ro/crate/1.2](https://w3id.org/ro/crate/1.2)
+- **GitHub repository:** [https://github.com/ResearchObject/ro-crate-py](https://github.com/ResearchObject/ro-crate-py)
+- **Cite as (DOI):** [https://doi.org/10.5281/zenodo.3956493](https://doi.org/10.5281/zenodo.3956493)
+
+## License and Contributors
+
+ro-crate-py is released under the **Apache License, version 2.0** and is maintained by a growing international community of contributors from institutions including the University of Manchester, VIB, Barcelona Supercomputing Center, CRS4, EPFL, SciLifeLab, and the National Institute of Informatics Japan, among others.
+
+<Note>
+  Contributions are welcome! See the [GitHub repository](https://github.com/ResearchObject/ro-crate-py) for contribution guidelines, open issues, and the full list of authors.
+</Note>
