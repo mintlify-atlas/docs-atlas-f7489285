@@ -114,7 +114,10 @@ measurements = crate.add_file(
     properties={"encodingFormat": "text/csv"},
     record_size=True,
 )
-print(measurements.id)       # "measurements.csv"
+print(measurements.id)  # "measurements.csv"
+
+# contentSize is populated during write (or stream)
+crate.write("/tmp/my-crate")
 print(measurements["contentSize"])  # e.g. "2048"
 ```
 
@@ -146,7 +149,7 @@ remote = crate.add_file(
     "https://example.org/report.pdf",
     validate_url=True,
 )
-# After serialization: remote["contentSize"] and remote["encodingFormat"] are set
+# After crate.write() or crate.stream_zip(): remote["contentSize"] and remote["encodingFormat"] are set
 ```
 
 ### In-memory content (StringIO / BytesIO)
@@ -195,9 +198,9 @@ Behaviour depends on `source`:
 | Source type | `fetch_remote` | Action |
 |---|---|---|
 | Local path | — | `shutil.copy` to `base_path / id` |
-| URL | `False` | Consumes stream headers only (for `validate_url`) |
-| URL | `True` | Downloads bytes to `base_path / dest_path` |
-| `StringIO` / `BytesIO` | — | Writes encoded bytes to `base_path / dest_path` |
+| URL | `False` | No file written; if `validate_url=True`, issues a `HEAD` request to populate `contentSize`/`encodingFormat` |
+| URL | `True` | Downloads bytes to `base_path / id`; sets `contentUrl` to the original URL |
+| `StringIO` / `BytesIO` | — | Writes encoded bytes to `base_path / id` |
 | `None` | — | Emits `UserWarning`, no file written |
 
 <Warning>
@@ -214,7 +217,7 @@ A generator that yields `(relative_path, bytes)` pairs. Used internally by `crat
 def stream(self, chunk_size: int = 8192) -> Generator[tuple[str, bytes], None, None]
 ```
 
-Each iteration yields a `(str, bytes)` tuple where the first element is the file's `@id` (relative to the crate root) and the second is a chunk of raw bytes.
+Each iteration yields a `(str, bytes)` tuple where the first element is the file path relative to the crate root (percent-decoded for local files) and the second is a chunk of raw bytes.
 
 ```python
 for path, chunk in file_entity.stream():
@@ -246,22 +249,28 @@ from io import StringIO
 app = FastAPI()
 
 @app.get("/crate")
-async def get_crate():
+async def get():
     crate = ROCrate()
 
+    # Add a remote file (fetched on-the-fly during streaming)
     crate.add_file(
         "https://raw.githubusercontent.com/ResearchObject/ro-crate-py/refs/heads/master/test/test-data/sample_file.txt",
-        fetch_remote=True,
-    )
-    crate.add_file(
-        source=StringIO("Hello, World!"),
-        dest_path="test-data/hello.txt",
+        fetch_remote=True
     )
 
+    # Add a file containing a string to the crate
+    crate.add_file(
+        source=StringIO("Hello, World!"),
+        dest_path="test-data/hello.txt"
+    )
+
+    # Stream crate to client as a zip file
     return StreamingResponse(
         crate.stream_zip(),
         media_type="application/rocrate+zip",
-        headers={"Content-Disposition": "attachment; filename=crate.zip"},
+        headers={
+            "Content-Disposition": "attachment; filename=crate.zip",
+        }
     )
 ```
 

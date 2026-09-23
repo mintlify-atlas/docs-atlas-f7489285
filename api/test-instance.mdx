@@ -129,9 +129,7 @@ suite.append_to("instance", instance)
 ### `runsOn` / `service`
 
 <ResponseField name="runsOn" type="TestService | None">
-  The `TestService` entity describing the CI platform. `service` is a module-level
-  alias for `runsOn`; both attributes read from and write to the same
-  `"runsOn"` JSON-LD property.
+  The `TestService` entity describing the CI platform. `service` is a class-level alias for the `runsOn` property descriptor — both names read from and write to the same `"runsOn"` JSON-LD property.
 
   ```python
   print(instance.runsOn.name)   # "Jenkins"
@@ -159,11 +157,11 @@ suite.append_to("instance", instance)
 
 `TestService` (extends `ContextEntity`) identifies the CI platform. Three canonical singletons are defined in `rocrate.model.testservice`:
 
-| Name string | Class identifier | Canonical IRI |
-|-------------|-----------------|---------------|
-| `"jenkins"` | `JenkinsService` | `https://w3id.org/ro/terms/test#JenkinsService` |
-| `"travis"` | `TravisService` | `https://w3id.org/ro/terms/test#TravisService` |
-| `"github"` | `GithubService` | `https://w3id.org/ro/terms/test#GithubService` |
+| Name string | `@id` constant | Canonical IRI | Display name |
+|-------------|---------------|---------------|--------------|
+| `"jenkins"` | `JENKINS_ID` | `https://w3id.org/ro/terms/test#JenkinsService` | `"Jenkins"` |
+| `"travis"` | `TRAVIS_ID` | `https://w3id.org/ro/terms/test#TravisService` | `"Travis CI"` |
+| `"github"` | `GITHUB_ID` | `https://w3id.org/ro/terms/test#GithubService` | `"Github Actions"` |
 
 Each service entity has `name` and `url` properties pointing to the platform's canonical website.
 

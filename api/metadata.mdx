@@ -13,7 +13,7 @@ The following RO-Crate specification versions are accepted by the `version` para
 | Version string | Notes |
 |---|---|
 | `"1.0"` | Legacy — uses `ro-crate-metadata.jsonld` as filename |
-| `"1.0-DRAFT"` | Legacy draft |
+| `"1.0-DRAFT"` | Draft of 1.0 — uses `ro-crate-metadata.json` |
 | `"1.1"` | Uses `ro-crate-metadata.json` |
 | `"1.1-DRAFT"` | Draft of 1.1 |
 | `"1.2"` | **Default** |
@@ -46,8 +46,9 @@ md = Metadata(crate, source=None, dest_path=None, properties=None, version="1.2"
 </ParamField>
 
 <ParamField path="dest_path" type="str | Path | None" default="None">
-  Destination filename within the crate. Defaults to `ro-crate-metadata.json`
-  for version ≥ 1.1, or `ro-crate-metadata.jsonld` for version 1.0.
+  Destination filename within the crate. Auto-set only when both `source` and
+  `dest_path` are `None`: defaults to `ro-crate-metadata.jsonld` for
+  `version="1.0"` exactly, or `ro-crate-metadata.json` for all other versions.
 </ParamField>
 
 <ParamField path="properties" type="dict | None" default="None">
@@ -266,8 +267,8 @@ crate.metadata.extra_terms.update(TESTING_EXTRA_TERMS)
 
 | Version | Default filename |
 |---|---|
-| `1.0`, `1.0-DRAFT` | `ro-crate-metadata.jsonld` |
-| `1.1`, `1.1-DRAFT`, `1.2`, `1.2-DRAFT` | `ro-crate-metadata.json` |
+| `1.0` | `ro-crate-metadata.jsonld` (legacy) |
+| `1.0-DRAFT`, `1.1`, `1.1-DRAFT`, `1.2`, `1.2-DRAFT` | `ro-crate-metadata.json` |
 
 <Info>
   The constants `BASENAME = "ro-crate-metadata.json"` and

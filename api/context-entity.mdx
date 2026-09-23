@@ -1,7 +1,7 @@
 ---
 title: "ContextEntity — Base Class for Contextual Entities"
 sidebarTitle: "ContextEntity"
-description: "ContextEntity is the base class for non-file entities in an RO-Crate — people, organizations, events, software, and custom types."
+description: "ContextEntity is the base class for all non-file entities in an RO-Crate — people, organizations, events, software, and custom linked types."
 ---
 
 Every RO-Crate is built from two kinds of entities: **data entities** (files and directories that live inside the crate) and **contextual entities** (everything else — people, organizations, events, licenses, software, and any other concept described in the metadata). `ContextEntity` is the Python base class for all contextual entities. It extends `Entity` and does not carry any file-writing behaviour; it exists purely as a metadata record serialized into `ro-crate-metadata.json`.
@@ -12,7 +12,7 @@ Every RO-Crate is built from two kinds of entities: **data entities** (files and
 from rocrate.model.contextentity import ContextEntity
 ```
 
-`ContextEntity` extends `Entity` and inherits all property-access, comparison, and serialization behaviour from it. The class body itself is intentionally minimal; all logic lives in `Entity`. Typed subclasses — `Person`, `ComputerLanguage`, `SoftwareApplication`, `TestSuite`, `TestInstance`, `TestService`, `TestDefinition`, and `CreativeWork` — all extend `ContextEntity` and add domain-specific typed defaults and properties.
+`ContextEntity` extends `Entity` and inherits all property-access, comparison, and serialization behaviour from it. The class body itself is intentionally minimal; all logic lives in `Entity`. Typed subclasses — `Person`, `ComputerLanguage`, `SoftwareApplication`, `TestSuite`, `TestInstance`, and `TestService` — extend `ContextEntity` directly and add domain-specific typed defaults and properties. `TestDefinition` extends `File` (not `ContextEntity`) and is a data entity. `CreativeWork` extends `Entity` directly and is used as a mixin base for `SoftwareApplication`.
 
 ## Constructor
 
@@ -49,7 +49,7 @@ ContextEntity(crate, identifier=None, properties=None)
 
 ## ID formatting
 
-Unlike `Dataset` (which appends a trailing `/` to directory identifiers), `ContextEntity.format_id` returns the identifier unchanged:
+`ContextEntity` does not override `format_id`. It inherits `Entity.format_id`, which returns `str(identifier)` unchanged. In contrast, `Dataset` (for directory entities) appends a trailing `/`. This means contextual entity identifiers are stored exactly as supplied:
 
 ```python
 entity = ContextEntity(crate, "https://schema.org/Event")
@@ -125,18 +125,18 @@ crate.add_jsonld({
 
 The following typed subclasses are available under `rocrate.model`:
 
-| Class | `@type` | Import path |
-|---|---|---|
-| `Person` | `Person` | `rocrate.model.person` |
-| `ComputerLanguage` | `ComputerLanguage` | `rocrate.model.computerlanguage` |
-| `SoftwareApplication` | `SoftwareApplication` | `rocrate.model.softwareapplication` |
-| `CreativeWork` | `CreativeWork` | `rocrate.model.creativework` |
-| `TestSuite` | `TestSuite` | `rocrate.model.testsuite` |
-| `TestInstance` | `TestInstance` | `rocrate.model.testinstance` |
-| `TestService` | `TestService` | `rocrate.model.testservice` |
-| `TestDefinition` | `TestDefinition` | `rocrate.model.testdefinition` |
+| Class | `@type` | Base class | Import path |
+|---|---|---|---|
+| `Person` | `"Person"` | `ContextEntity` | `rocrate.model.person` |
+| `ComputerLanguage` | `"ComputerLanguage"` | `ContextEntity` | `rocrate.model.computerlanguage` |
+| `SoftwareApplication` | `"SoftwareApplication"` | `ContextEntity, CreativeWork` | `rocrate.model.softwareapplication` |
+| `CreativeWork` | `"CreativeWork"` | `Entity` | `rocrate.model.creativework` |
+| `TestSuite` | `"TestSuite"` | `ContextEntity` | `rocrate.model.testsuite` |
+| `TestInstance` | `"TestInstance"` | `ContextEntity` | `rocrate.model.testinstance` |
+| `TestService` | `"TestService"` | `ContextEntity` | `rocrate.model.testservice` |
+| `TestDefinition` | `["File", "TestDefinition"]` | `File` | `rocrate.model.testdefinition` |
 
-Each subclass sets a default `@type` automatically via `_empty()`, so you do not need to include `"@type"` in `properties` when using a typed subclass.
+Each class sets a default `@type` automatically via `_empty()`, so you do not need to include `"@type"` in `properties`. Note that `TestDefinition` extends `File` (not `ContextEntity`), so it is a data entity and its source file is written to disk on `crate.write()`. `CreativeWork` extends `Entity` directly and is used as a mixin; it will not appear in `crate.contextual_entities` unless explicitly added.
 
 ## Iterating over contextual entities
 

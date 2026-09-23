@@ -19,7 +19,8 @@ Entity (MutableMapping)
 │       │   ├── TestDefinition
 │       │   └── ComputationalWorkflow / WorkflowDescription
 │       └── Dataset
-│           └── RootDataset
+│           ├── RootDataset
+│           └── Subcrate
 └── ContextEntity
     ├── Person
     ├── ComputerLanguage
@@ -102,7 +103,7 @@ crate.resolve_id("paper.pdf") == entity.canonical_id()  # True
 
 ## Dict-like Property Access
 
-`Entity` implements the full `MutableMapping` interface. The mapping keys correspond to JSON-LD property names (excluding `@id` and `@type`, which are managed separately).
+`Entity` implements the full `MutableMapping` interface. The mapping keys are all JSON-LD property names in the underlying `_jsonld` dict, including `@id` and `@type`. However, `__setitem__` and `__delitem__` raise `KeyError` for any key starting with `@`, so `@id` and `@type` must be read via the `.id` and `.type` properties and cannot be mutated through the dict API.
 
 ### Reading a property
 
@@ -164,7 +165,7 @@ Return the value for `key`, or `default` if the key is absent. Dereferences refe
 entity.append_to(key, value, compact=False)
 ```
 
-Append one or more values to a property without clobbering an existing list. If the property does not yet exist it is initialised to an empty list before appending. Useful for building `hasPart`, `input`, `mentions`, and similar list-valued properties incrementally.
+Append one or more values to a property without clobbering an existing value. If the property does not yet exist, it is initialised to an empty list. If it already exists as a scalar (non-list) value, it is first converted to a single-element list. The new values are then appended to that list. Useful for building `hasPart`, `input`, `mentions`, and similar list-valued properties incrementally.
 
 <ParamField path="key" type="str">
   The property name. Cannot start with `@`.
@@ -255,6 +256,25 @@ repr(entity)  # "<#alice Person>"
 ```
 
 The default `__repr__` format is `<{id} {type}>`. For entities with multiple types, `type` is a list, which is included as-is.
+
+---
+
+## Equality
+
+```python
+entity_a == entity_b
+```
+
+Two entities are equal if and only if both their `id` **and** their underlying `_jsonld` dict are equal. Comparing an `Entity` to a non-`Entity` returns `NotImplemented`.
+
+```python
+e1 = Entity(crate, "#foo", {"name": "Foo"})
+e2 = Entity(crate, "#foo", {"name": "Foo"})
+e3 = Entity(crate, "#foo", {"name": "Bar"})
+
+e1 == e2  # True  — same id AND same properties
+e1 == e3  # False — same id but different properties
+```
 
 ---
 

@@ -15,22 +15,27 @@ Entity (MutableMapping)
 ├── DataEntity
 │   └── FileOrDir
 │       ├── File
+│       │   ├── Metadata           # special — the metadata file descriptor
+│       │   ├── Preview            # special — the HTML preview file
+│       │   ├── ComputationalWorkflow
+│       │   │   └── WorkflowDescription
+│       │   └── TestDefinition
 │       └── Dataset
-│           └── Subcrate       # nested RO-Crate
+│           ├── RootDataset        # special — the crate itself
+│           └── Subcrate           # nested RO-Crate
 └── ContextEntity
     ├── Person
     ├── ComputerLanguage
     ├── SoftwareApplication
-    ├── ComputationalWorkflow
     ├── CreativeWork
-    ├── Metadata               # special — the metadata file descriptor
-    ├── RootDataset            # special — the crate itself
-    └── Preview                # special — the HTML preview file
+    ├── TestSuite
+    ├── TestInstance
+    └── TestService
 ```
 
 <CardGroup cols={2}>
   <Card title="Data entities" icon="database">
-    `File` and `Dataset` represent digital objects that exist (or will exist) inside the crate directory. They carry a `source` path and a `write` method used during serialization.
+    `File` and `Dataset` (and their subclasses) represent digital objects that exist (or will exist) inside the crate directory. They carry a `source` path and a `write` method used during serialization. Special subclasses `Metadata`, `Preview`, and `RootDataset` are always managed by the `ROCrate` object.
   </Card>
   <Card title="Contextual entities" icon="tag">
     `ContextEntity` and its subclasses describe non-digital things — people, organizations, events, software, languages. They have no `write` method and are serialized only to the metadata JSON.
@@ -221,13 +226,13 @@ Three entity types are always managed directly by the `ROCrate` object and expos
 
 <CardGroup cols={3}>
   <Card title="RootDataset" icon="circle-dot">
-    Represents the crate itself (`@id: "./"`, `@type: "Dataset"`). Accessed as `crate.root_dataset`. Convenience properties like `crate.name`, `crate.license`, and `crate.description` are aliases for properties on this entity.
+    A `Dataset` subclass representing the crate itself (`@id: "./"`, `@type: "Dataset"`). Accessed as `crate.root_dataset`. Convenience properties like `crate.name`, `crate.license`, and `crate.description` are aliases for properties on this entity.
   </Card>
   <Card title="Metadata" icon="file-lines">
-    Represents the metadata file descriptor. Accessed as `crate.metadata`. Carries the `conformsTo` reference that determines the crate's specification version (`crate.metadata.version`).
+    A `File` subclass representing the `ro-crate-metadata.json` descriptor. Accessed as `crate.metadata`. Carries the `conformsTo` reference that determines the crate's specification version (`crate.metadata.version`).
   </Card>
   <Card title="Preview" icon="eye">
-    An optional `ro-crate-preview.html` file. Created when `gen_preview=True` is passed to the constructor. Accessed as `crate.preview` (may be `None`).
+    A `File` subclass representing the optional `ro-crate-preview.html` file. Created when `gen_preview=True` is passed to the constructor. Accessed as `crate.preview` (may be `None` if no preview was created).
   </Card>
 </CardGroup>
 

@@ -184,10 +184,10 @@ def write(self, base_path: str | Path) -> None
 
 | Source type | `fetch_remote` | Action |
 |---|---|---|
-| Local path | — | Creates `base_path / id`; copies unlisted files (CREATE mode only) |
-| URL | `False` | Opens URL to verify it (if `validate_url=True`), sets `sdDatePublished` |
-| URL | `True` | Downloads each `hasPart` URL entry into `base_path / dest_path` |
-| `None` | — | Creates an empty directory at `base_path / id` |
+| Local path | — | Creates `base_path / id` (`mkdir(parents=True, exist_ok=True)`); copies unlisted files (CREATE mode only) |
+| URL | `False` | No directory written; if `validate_url=True`, opens the URL to set `sdDatePublished` |
+| URL | `True` | Downloads each `hasPart` URL entry into `base_path / id / filename` |
+| `None` | — | Creates an empty directory at `base_path / id` (`mkdir(parents=True, exist_ok=True)`) |
 
 <Warning>
   `write()` is called automatically by `crate.write()` and `crate.write_zip()`. Call it directly only when implementing custom serialization.

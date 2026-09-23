@@ -110,7 +110,7 @@ workflow = crate.add_workflow(
 
 lang_entity = workflow.lang
 print(lang_entity["name"])        # "Snakemake"
-print(lang_entity["url"])         # {"@id": "https://snakemake.readthedocs.io"}
+print(lang_entity["url"])         # "https://snakemake.readthedocs.io"
 ```
 
 ## Galaxy → Abstract CWL Conversion
@@ -134,7 +134,7 @@ workflow = crate.add_workflow(
 ```
 
 <Warning>
-`gen_cwl=True` is only supported when `lang="galaxy"`. Passing it with any other language raises a `ValueError`.
+`gen_cwl=True` is only supported when `lang="galaxy"`. Passing it with any other language raises a `ValueError`. If the `ga2cwl` extra is not installed, a `RuntimeError` is raised at call time.
 </Warning>
 
 When `gen_cwl=True`, ro-crate-py:

@@ -17,7 +17,7 @@ description: "Detached RO-Crates have no root directory — metadata is accessed
 | Written via | `crate.write(path)` | `crate.write_detached(path)` |
 
 <Info>
-Both attached and attached crates support an absolute URI as the root dataset `@id`. The distinction is whether the crate describes a directory payload or stands alone as a pure metadata object.
+Both attached and detached crates support an absolute URI as the root dataset `@id`. The distinction is whether the crate describes a directory payload or stands alone as a pure metadata object.
 </Info>
 
 ## Creating a Detached Crate
@@ -60,7 +60,7 @@ crate.write_detached("/tmp/example-ro-crate-metadata.json")
 ```
 
 <Warning>
-If the path you pass to `write_detached` does not match the pattern `*-ro-crate-metadata.json`, a `UserWarning` is issued at runtime. The file is still written, but consuming tools may not recognise it as a detached crate.
+If the path you pass to `write_detached` does not match the regex pattern `.*-ro-crate-metadata.json$`, a `UserWarning` is issued at runtime. The file is still written, but consuming tools may not recognise it as a detached crate.
 </Warning>
 
 The output is a single JSON-LD metadata file — no directory tree is created.

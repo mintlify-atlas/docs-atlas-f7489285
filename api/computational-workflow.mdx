@@ -61,7 +61,7 @@ workflow = crate.add_workflow(
 </ParamField>
 
 <ParamField path="gen_cwl" type="bool" default="False">
-  When `True` and `lang` is `"galaxy"`, ro-crate-py generates an abstract CWL description using the `galaxy2cwl` package and registers it as a `WorkflowDescription` entity. The workflow's `subjectOf` property is then set to point at this CWL description. Requires the `rocrate[ga2cwl]` extra.
+  When `True` and `lang` is `"galaxy"`, ro-crate-py generates an abstract CWL description using the `galaxy2cwl` package and registers it as a `WorkflowDescription` entity. The workflow's `subjectOf` property is then set to point at this CWL description. Requires the `rocrate[ga2cwl]` extra. When `lang` is `"cwl"`, this flag is silently ignored. For any other language (e.g. `"nextflow"`, `"snakemake"`), a `ValueError` is raised.
 </ParamField>
 
 <ParamField path="cls" type="type" default="ComputationalWorkflow">
@@ -226,6 +226,11 @@ wf = crate.add_workflow("pipeline.nf", main=True, lang=lang)
 ### Write the workflow crate to disk
 
 ```python
+from rocrate.rocrate import ROCrate
+
+crate = ROCrate()
+crate.add_workflow("analysis.cwl", main=True, lang="cwl", lang_version="1.2")
+
 crate.write("/tmp/workflow-crate")
 # Creates /tmp/workflow-crate/
 #   ro-crate-metadata.json   (includes mainEntity, conformsTo WORKFLOW_PROFILE)
@@ -291,7 +296,7 @@ Converts a Galaxy `.ga` workflow file to an abstract CWL representation by invok
   pip install rocrate[ga2cwl]
   ```
 
-  If `galaxy2cwl` is not installed, calling this function raises `RuntimeError: conversion to cwl not available`.
+  If `galaxy2cwl` is not installed, calling this function raises `RuntimeError: conversion to cwl not available: package was not installed with the 'ga2cwl' option`.
 </Warning>
 
 ---

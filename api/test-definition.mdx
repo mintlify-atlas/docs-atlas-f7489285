@@ -120,8 +120,7 @@ suite.definition = definition
 ### `conformsTo` / `engine`
 
 <ResponseField name="conformsTo" type="SoftwareApplication | None">
-  The execution engine entity. `engine` is a module-level alias that reads from
-  and writes to the same `"conformsTo"` JSON-LD property.
+  The execution engine entity. `engine` is a class-level alias for the `conformsTo` property descriptor — both names read from and write to the same `"conformsTo"` JSON-LD property.
 
   ```python
   print(definition.conformsTo.name)  # "Planemo"

@@ -120,14 +120,19 @@ crate.delete(*entities)
 
 Remove one or more entities from the crate. Accepts either `Entity` instances or string `@id` values. The root dataset and metadata entities cannot be deleted and will raise `ValueError`.
 
+Two automatic side-effects are applied during deletion:
+- If the entity being deleted is the `Preview`, `crate.preview` is set to `None`.
+- If the entity is a data entity (has a `write` method), it is also removed from `root_dataset.hasPart`.
+
 <ParamField path="*entities" type="Entity | str">
   Entities to delete. Strings are resolved via `dereference` before deletion.
 </ParamField>
 
 <Warning>
-  Deletion does **not** update other entities that reference the deleted entity.
-  The crate may be left in an inconsistent state — check and clean up dependent
-  entities manually.
+  Beyond the automatic `hasPart` cleanup for data entities, deletion does
+  **not** update other entities that reference the deleted entity. The crate
+  may be left in an inconsistent state — check and clean up dependent entities
+  manually.
 </Warning>
 
 ```python
@@ -756,12 +761,15 @@ crate.write(base_path)
 
 Serialise the crate to a directory. Creates `base_path` if it does not exist. All data entities are copied or written to their `dest_path` locations and `ro-crate-metadata.json` is generated.
 
+`write_crate` is an alias for `write` and is kept for backwards compatibility.
+
 <ParamField path="base_path" type="str | Path">
   The target directory.
 </ParamField>
 
 ```python
 crate.write("/output/my-crate")
+crate.write_crate("/output/my-crate")  # backwards-compatible alias
 ```
 
 ---
@@ -904,11 +912,14 @@ Resolve a relative or absolute `@id` to a canonical arcp URI. Relative paths are
 </ResponseField>
 
 <ResponseField name="test_dir" type="Dataset | None">
-  The dataset entity with `@id: "test"`, if present and typed as `Dataset`.
+  The dataset entity with `@id: "test/"`, if it exists in the crate and its
+  `@type` includes `Dataset`. Looked up via `dereference("test")` — trailing
+  slash normalisation means `"test"` and `"test/"` resolve to the same entity.
 </ResponseField>
 
 <ResponseField name="examples_dir" type="Dataset | None">
-  The dataset entity with `@id: "examples"`, if present and typed as `Dataset`.
+  The dataset entity with `@id: "examples/"`, if it exists in the crate and
+  its `@type` includes `Dataset`. Same normalisation as `test_dir`.
 </ResponseField>
 
 <ResponseField name="source" type="Path | dict | str | None">
